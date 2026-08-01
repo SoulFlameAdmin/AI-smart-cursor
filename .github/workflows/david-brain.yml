@@ -1,0 +1,31 @@
+name: DAVID Brain
+
+on:
+  push:
+    paths:
+      - "brain/**"
+      - ".github/workflows/david-brain.yml"
+  pull_request:
+    paths:
+      - "brain/**"
+      - ".github/workflows/david-brain.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test DAVID Brain 0.1
+        working-directory: brain
+        run: npm test
