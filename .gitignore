@@ -16,6 +16,7 @@ user-data/
 userdata/
 logs/
 .david-sync.json
+.david-runtime/
 
 # Generated output
 dist/

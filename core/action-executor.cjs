@@ -2,6 +2,7 @@
 
 const { spawn } = require("child_process");
 const { BrowserAgent, sleep, validateHttpUrl } = require("./browser-agent.cjs");
+const { TeacherLoop } = require("./teacher-loop.cjs");
 const { clickAt, typeText } = require("./windows-native.cjs");
 const { ALLOWED_ACTIONS } = require("./skill-schema.cjs");
 
@@ -20,6 +21,11 @@ class ActionExecutor {
     this.nativeActionsEnabled = nativeActionsEnabled;
     this.sendStatus = sendStatus;
     this.browser = new BrowserAgent({ BrowserWindow, sendStatus });
+    this.teacherLoop = new TeacherLoop({
+      browser: this.browser,
+      sendStatus,
+      confirmAction
+    });
   }
 
   async run(steps) {
@@ -42,7 +48,8 @@ class ActionExecutor {
       );
 
       try {
-        await this.executeStep(step);
+        const stepResult = await this.executeStep(step);
+        if (stepResult !== undefined) log.result = stepResult;
         log.status = "success";
         log.finished_at = new Date().toISOString();
       } catch (error) {
@@ -119,6 +126,9 @@ class ActionExecutor {
       case "verify_url_contains":
         this.browser.verifyUrlContains(step.value);
         return;
+
+      case "teacher_loop":
+        return this.teacherLoop.run(step.goal || "");
 
       case "system_click":
         await this.executeNativeClick(step);

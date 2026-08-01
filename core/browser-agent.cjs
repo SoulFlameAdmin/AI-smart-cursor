@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -13,6 +13,28 @@ function validateHttpUrl(value) {
 
   return url.toString();
 }
+
+const CHATGPT_PROMPT_SELECTOR = [
+  "#prompt-textarea",
+  "[contenteditable='true'][data-virtualkeyboard]",
+  "[contenteditable='true'].ProseMirror",
+  "textarea[data-id='root']",
+  "textarea"
+].join(", ");
+
+const CHATGPT_SEND_SELECTOR = [
+  "button[data-testid='send-button']:not([disabled])",
+  "button[aria-label='Send prompt']:not([disabled])",
+  "button[aria-label='Изпращане на подкана']:not([disabled])",
+  "button[aria-label='Send message']:not([disabled])"
+].join(", ");
+
+const CHATGPT_STOP_SELECTOR = [
+  "button[data-testid='stop-button']",
+  "button[aria-label*='Stop generating']",
+  "button[aria-label*='Спиране на генерирането']",
+  "button[aria-label*='Stop']"
+].join(", ");
 
 class BrowserAgent {
   constructor({ BrowserWindow, sendStatus }) {
@@ -68,6 +90,22 @@ class BrowserAgent {
     await window.loadURL(target);
     window.show();
     window.focus();
+  }
+
+  async openIfNeeded(url) {
+    const target = validateHttpUrl(url);
+    const window = this.ensureWindow();
+    const current = window.webContents.getURL();
+
+    if (!current || current === "about:blank" || current !== target) {
+      await this.open(target);
+    } else {
+      window.show();
+      window.focus();
+    }
+
+    await this.waitForSelector(CHATGPT_PROMPT_SELECTOR, 45000);
+    return window;
   }
 
   async waitForSelector(selector, timeout = 15000) {
@@ -188,11 +226,8 @@ class BrowserAgent {
           element.focus();
 
           if (element.isContentEditable) {
-            const selection =
-              window.getSelection();
-
-            const range =
-              document.createRange();
+            const selection = window.getSelection();
+            const range = document.createRange();
 
             range.selectNodeContents(element);
             selection.removeAllRanges();
@@ -283,11 +318,107 @@ class BrowserAgent {
 
     return true;
   }
+
+  async getChatGptSnapshot() {
+    const window = this.ensureWindow();
+
+    return window.webContents.executeJavaScript(
+      `(() => {
+        const nodes = Array.from(
+          document.querySelectorAll('[data-message-author-role="assistant"]')
+        );
+        const messages = [];
+        const seen = new Set();
+
+        for (const node of nodes) {
+          const container = node.closest('article') || node;
+          const text = String(container.innerText || node.innerText || "").trim();
+          if (!text || seen.has(text)) continue;
+          seen.add(text);
+          messages.push(text);
+        }
+
+        const last = messages[messages.length - 1] || "";
+        return {
+          count: messages.length,
+          last,
+          last_length: last.length,
+          generating: Boolean(document.querySelector(${JSON.stringify(CHATGPT_STOP_SELECTOR)})),
+          url: location.href
+        };
+      })()`,
+      true
+    );
+  }
+
+  async sendChatGptMessage(message) {
+    const window = this.ensureWindow();
+    window.show();
+    window.focus();
+
+    await this.waitForSelector(CHATGPT_PROMPT_SELECTOR, 30000);
+    const before = await this.getChatGptSnapshot();
+    await this.typeSelector(CHATGPT_PROMPT_SELECTOR, String(message));
+
+    try {
+      await this.waitForSelector(CHATGPT_SEND_SELECTOR, 15000);
+      await this.clickSelector(CHATGPT_SEND_SELECTOR);
+    } catch (error) {
+      // React UI selectors occasionally change. Enter is the visible Electron fallback.
+      await this.pressKey("ENTER");
+      await sleep(800);
+
+      const promptStillHasText = await window.webContents.executeJavaScript(
+        `(() => {
+          const element = document.querySelector(${JSON.stringify(CHATGPT_PROMPT_SELECTOR)});
+          if (!element) return false;
+          return Boolean(String(element.innerText || element.value || "").trim());
+        })()`,
+        true
+      );
+
+      if (promptStillHasText) throw error;
+    }
+
+    return before;
+  }
+
+  async waitForChatGptResponse({ before, timeoutMs = 240000 }) {
+    const started = Date.now();
+    let stableText = "";
+    let stableSince = 0;
+
+    while (Date.now() - started < timeoutMs) {
+      const snapshot = await this.getChatGptSnapshot();
+      const isNew =
+        snapshot.count > Number(before?.count || 0) ||
+        (snapshot.last && snapshot.last !== String(before?.last || ""));
+
+      if (isNew && snapshot.last) {
+        if (snapshot.last !== stableText) {
+          stableText = snapshot.last;
+          stableSince = Date.now();
+        }
+
+        if (!snapshot.generating && Date.now() - stableSince >= 2200) {
+          return snapshot.last;
+        }
+      }
+
+      await sleep(500);
+    }
+
+    throw new Error(
+      `GPT не завърши отговора за ${Math.round(timeoutMs / 1000)} секунди.`
+    );
+  }
 }
 
 module.exports = {
   BrowserAgent,
+  CHATGPT_PROMPT_SELECTOR,
+  CHATGPT_SEND_SELECTOR,
+  CHATGPT_STOP_SELECTOR,
   sleep,
   validateHttpUrl
 };
-

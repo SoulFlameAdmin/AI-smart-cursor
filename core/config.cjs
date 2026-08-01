@@ -31,8 +31,45 @@ function loadConfig() {
     nativeActionsEnabled: parseBoolean(
       process.env.DAVID_ENABLE_NATIVE_ACTIONS,
       false
-    )
+    ),
+    teacherChatUrl:
+      process.env.DAVID_TEACHER_CHAT_URL ||
+      "https://chatgpt.com/c/6a6d7e46-3534-83eb-a42b-c981bad99c84",
+    repositoryRoot: process.env.DAVID_REPOSITORY_ROOT || process.cwd(),
+    maxTeacherRounds: parseInteger(
+      process.env.DAVID_MAX_TEACHER_ROUNDS,
+      8,
+      1,
+      20
+    ),
+    gptResponseTimeoutMs: parseInteger(
+      process.env.DAVID_GPT_RESPONSE_TIMEOUT_MS,
+      240000,
+      30000,
+      900000
+    ),
+    powershellTimeoutMs: parseInteger(
+      process.env.DAVID_POWERSHELL_TIMEOUT_MS,
+      600000,
+      10000,
+      1800000
+    ),
+    maxTeacherOutputChars: parseInteger(
+      process.env.DAVID_MAX_TEACHER_OUTPUT_CHARS,
+      30000,
+      4000,
+      100000
+    ),
+    powershellExecutable:
+      process.env.DAVID_POWERSHELL_EXE || "powershell.exe",
+    autoApproveSafePowerShell: parseBoolean(
+      process.env.DAVID_AUTO_APPROVE_SAFE_POWERSHELL,
+      false
+    ),
+    deviceBridgeFunction:
+      process.env.DAVID_DEVICE_BRIDGE_FUNCTION || "david-device-bridge",
+    deviceToken: process.env.DAVID_DEVICE_TOKEN || ""
   };
 }
 
-module.exports = { loadConfig };
+module.exports = { loadConfig, parseBoolean, parseInteger };
