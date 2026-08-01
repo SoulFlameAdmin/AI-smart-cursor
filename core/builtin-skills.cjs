@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const DAVID_TEACHER_CHAT_URL =
   "https://chatgpt.com/c/6a6d7e46-3534-83eb-a42b-c981bad99c84";
@@ -9,7 +9,7 @@ function createChatGptTeacherSkill() {
     title: "Пиши в DAVID Teacher GPT разговора",
     description:
       "Вграден локален skill. Отваря постоянния DAVID Teacher разговор и изпраща зададеното съобщение.",
-    version: 1,
+    version: 2,
     status: "approved",
     source: "builtin",
     risk_level: "low",
@@ -17,7 +17,7 @@ function createChatGptTeacherSkill() {
       type: "regex",
       pattern:
         "^(?:пиши|pishi|напиши|napishi|прати|prati|изпрати|izprati)" +
-        "(?:\\s+(?:на|в|до|do))?\\s+" +
+        "(?:\\s+(?:на|na|в|v|до|do))?\\s+" +
         "(?:gpt|chatgpt)\\s+(.+)$",
       flags: "iu",
       variables: ["message"]
@@ -96,4 +96,3 @@ module.exports = {
   createChatGptTeacherSkill,
   getBuiltInSkills
 };
-
