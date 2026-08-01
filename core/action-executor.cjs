@@ -141,6 +141,11 @@ class ActionExecutor {
         return;
 
       case "notify":
+        this.sendStatus(
+          step.text || "Задачата приключи.",
+          "ready"
+        );
+
         if (this.Notification.isSupported()) {
           new this.Notification({
             title: step.title || "DAVID",

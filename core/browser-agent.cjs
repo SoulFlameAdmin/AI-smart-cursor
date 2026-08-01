@@ -356,9 +356,25 @@ class BrowserAgent {
           ? String(last.innerText || last.textContent || "").trim()
           : "";
 
-        const generating = Boolean(
-          document.querySelector(${JSON.stringify(STOP_SELECTOR)})
+        const stopButtons = Array.from(
+          document.querySelectorAll(
+            ${JSON.stringify(STOP_SELECTOR)}
+          )
         );
+
+        const generating = stopButtons.some((element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+
+          return (
+            !element.disabled &&
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        });
 
         return {
           count: nodes.length,
@@ -389,13 +405,20 @@ class BrowserAgent {
         state.count > baseline.count ||
         (state.text && state.text !== baseline.text);
 
-      if (changed && state.text && !state.generating) {
+      if (changed && state.text) {
         if (state.text !== stableText) {
           stableText = state.text;
           stableSince = Date.now();
-        } else if (Date.now() - stableSince >= 1600) {
-          this.teacherBaseline = state;
-          return state;
+        } else {
+          const stableFor = Date.now() - stableSince;
+
+          if (
+            (!state.generating && stableFor >= 1200) ||
+            stableFor >= 5000
+          ) {
+            this.teacherBaseline = state;
+            return state;
+          }
         }
       } else {
         stableText = "";
