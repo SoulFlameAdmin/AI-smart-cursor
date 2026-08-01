@@ -16,14 +16,22 @@ class TeacherClient {
   async initialize(onRemoteJob) {
     if (!this.bridge.isConfigured()) {
       this.sendStatus(
-        "DAVID работи в local demo режим · Supabase не е настроен",
+        "DAVID работи в local demo режим · legacy Supabase Teacher не е настроен",
         "warning"
       );
       return;
     }
 
-    this.connected = await this.bridge.initialize(onRemoteJob);
-    this.sendStatus("DAVID Teacher е свързан със Supabase", "ready");
+    try {
+      this.connected = await this.bridge.initialize(onRemoteJob);
+      this.sendStatus("DAVID legacy Teacher е свързан със Supabase", "ready");
+    } catch (error) {
+      this.connected = false;
+      this.sendStatus(
+        `Legacy Supabase Teacher е недостъпен; DAVID продължава локално: ${error.message}`,
+        "warning"
+      );
+    }
   }
 
   isConnected() {
