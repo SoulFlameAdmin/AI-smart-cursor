@@ -21,6 +21,13 @@ const mainSource = fs.readFileSync(
   "utf8"
 );
 
+/* DAVID_BROWSER_WINDOW_TEST_SOURCE_BEGIN */
+const browserAgentSource = fs.readFileSync(
+  path.join(root, "core", "browser-agent.cjs"),
+  "utf8"
+);
+/* DAVID_BROWSER_WINDOW_TEST_SOURCE_END */
+
 const skills = getBuiltInSkills();
 
 const chatSkill = skills.find(
@@ -165,6 +172,33 @@ assert.strictEqual(
   1,
   "requestChatGptMessage must have exactly one definition."
 );
+
+/* DAVID_BROWSER_WINDOW_TESTS_BEGIN */
+assert.ok(
+  mainSource.includes('window.getTitle() || "") === "DAVID Browser"'),
+  "DAVID Browser must be excluded from the overlay fullscreen patch."
+);
+
+assert.ok(
+  browserAgentSource.includes("minimizable: true"),
+  "DAVID Browser must be minimizable."
+);
+
+assert.ok(
+  browserAgentSource.includes("maximizable: true"),
+  "DAVID Browser must be maximizable."
+);
+
+assert.ok(
+  browserAgentSource.includes("window.maximize()"),
+  "DAVID Browser must open maximized."
+);
+
+assert.ok(
+  browserAgentSource.includes("window.isMinimized()"),
+  "DAVID Browser must restore after minimization."
+);
+/* DAVID_BROWSER_WINDOW_TESTS_END */
 
 console.log(
   JSON.stringify({
