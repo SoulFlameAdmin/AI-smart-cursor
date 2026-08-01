@@ -22,6 +22,55 @@ class ActionExecutor {
     this.browser = new BrowserAgent({ BrowserWindow, sendStatus });
   }
 
+  describeStep(step) {
+    switch (step.action) {
+      case "open_url":
+      case "browser_open":
+        return `${step.action}: ${String(step.url || "").slice(0, 120)}`;
+      case "open_app":
+        return `open_app: ${String(step.app || "").slice(0, 80)}`;
+      case "system_click":
+        return `system_click: X=${step.x}, Y=${step.y}`;
+      case "system_type":
+      case "browser_type_selector":
+        return `${step.action}: ${String(step.text || "").slice(0, 100)}`;
+      case "browser_click_selector":
+      case "browser_wait_selector":
+        return `${step.action}: ${String(step.selector || "").slice(0, 100)}`;
+      case "browser_click_text":
+        return `browser_click_text: ${String(step.text || "").slice(0, 100)}`;
+      default:
+        return step.action;
+    }
+  }
+
+  async confirmPlan({ command, skill }) {
+    if (!skill || skill.source !== "electron_chat_teacher") {
+      return true;
+    }
+
+    if (skill.status === "local_verified" && skill.risk_level === "low") {
+      return true;
+    }
+
+    const stepSummary = skill.steps
+      .slice(0, 12)
+      .map((step, index) => `${index + 1}. ${this.describeStep(step)}`)
+      .join("\n");
+
+    const extra = skill.steps.length > 12
+      ? `\n... и още ${skill.steps.length - 12} стъпки`
+      : "";
+
+    return this.confirmAction({
+      title: `GPT Teacher предлага: ${skill.title}`,
+      detail:
+        `Команда: ${String(command || "").slice(0, 300)}\n` +
+        `Риск: ${skill.risk_level}\n\n` +
+        `${stepSummary}${extra}`
+    });
+  }
+
   async run(steps) {
     const logs = [];
     const startedAt = new Date().toISOString();
