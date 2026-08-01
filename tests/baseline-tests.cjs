@@ -15,18 +15,24 @@ const {
   renderTemplate
 } = require("../core/skill-matcher.cjs");
 
+const {
+  DAVID_TEACHER_SYNC_PROTOCOL,
+  parseTeacherPacket
+} = require("../core/teacher-sync-protocol.cjs");
+
 const root = path.resolve(__dirname, "..");
 const mainSource = fs.readFileSync(
   path.join(root, "main.cjs"),
   "utf8"
 );
-
-/* DAVID_BROWSER_WINDOW_TEST_SOURCE_BEGIN */
 const browserAgentSource = fs.readFileSync(
   path.join(root, "core", "browser-agent.cjs"),
   "utf8"
 );
-/* DAVID_BROWSER_WINDOW_TEST_SOURCE_END */
+const actionExecutorSource = fs.readFileSync(
+  path.join(root, "core", "action-executor.cjs"),
+  "utf8"
+);
 
 const skills = getBuiltInSkills();
 
@@ -74,6 +80,14 @@ assert.ok(
       step.milliseconds === 5000
   ),
   "The five second wait is missing."
+);
+
+assert.ok(
+  chatSteps.some(
+    (step) =>
+      step.action === "browser_mark_teacher_state"
+  ),
+  "Teacher response baseline is not marked before sending."
 );
 
 assert.ok(
@@ -161,6 +175,53 @@ assert.ok(
   "Upgrade request does not mention Supabase memory."
 );
 
+assert.ok(
+  DAVID_UPGRADE_REQUEST_MESSAGE.includes(
+    DAVID_TEACHER_SYNC_PROTOCOL
+  ),
+  "Upgrade request does not activate the Teacher Sync protocol."
+);
+
+assert.ok(
+  upgradeSteps.some(
+    (step) =>
+      step.action === "browser_teacher_sync" &&
+      step.max_rounds === 3
+  ),
+  "Upgrade bridge does not start the safe Teacher Sync loop."
+);
+
+const parsedPacket = parseTeacherPacket(`
+  \`\`\`json
+  {
+    "protocol": "david_teacher_sync_v1",
+    "status": "action",
+    "summary": "Safe test",
+    "actions": [
+      { "action": "wait", "milliseconds": 500 },
+      { "action": "notify", "title": "DAVID", "text": "PASS" }
+    ]
+  }
+  \`\`\`
+`);
+
+assert.strictEqual(parsedPacket.status, "action");
+assert.strictEqual(parsedPacket.actions.length, 2);
+assert.strictEqual(parsedPacket.actions[0].milliseconds, 500);
+
+assert.throws(
+  () => parseTeacherPacket(JSON.stringify({
+    protocol: DAVID_TEACHER_SYNC_PROTOCOL,
+    status: "action",
+    summary: "Unsafe",
+    actions: [
+      { action: "open_app", app: "powershell.exe" }
+    ]
+  })),
+  /не е разрешено/iu,
+  "Teacher Sync accepted an unsafe action."
+);
+
 const duplicateCount = (
   mainSource.match(
     /function\s+requestChatGptMessage\s*\(/g
@@ -173,7 +234,6 @@ assert.strictEqual(
   "requestChatGptMessage must have exactly one definition."
 );
 
-/* DAVID_BROWSER_WINDOW_TESTS_BEGIN */
 assert.ok(
   mainSource.includes('window.getTitle() || "") === "DAVID Browser"'),
   "DAVID Browser must be excluded from the overlay fullscreen patch."
@@ -198,13 +258,28 @@ assert.ok(
   browserAgentSource.includes("window.isMinimized()"),
   "DAVID Browser must restore after minimization."
 );
-/* DAVID_BROWSER_WINDOW_TESTS_END */
+
+assert.ok(
+  browserAgentSource.includes("waitForTeacherResponse"),
+  "DAVID Browser cannot wait for a GPT response."
+);
+
+assert.ok(
+  browserAgentSource.includes("data-message-author-role='assistant'"),
+  "DAVID Browser cannot read the last GPT assistant message."
+);
+
+assert.ok(
+  actionExecutorSource.includes("runTeacherSync"),
+  "DAVID ActionExecutor does not implement the Teacher Sync loop."
+);
 
 console.log(
   JSON.stringify({
     status: "PASS",
     teacherUrl: DAVID_TEACHER_CHAT_URL,
     upgradeBridge: "PASS",
+    teacherSync: "PASS",
     duplicateRequestFunctionCount: duplicateCount
   })
 );

@@ -4,6 +4,10 @@ const { spawn } = require("child_process");
 const { BrowserAgent, sleep, validateHttpUrl } = require("./browser-agent.cjs");
 const { clickAt, typeText } = require("./windows-native.cjs");
 const { ALLOWED_ACTIONS } = require("./skill-schema.cjs");
+const {
+  parseTeacherPacket,
+  buildTeacherResult
+} = require("./teacher-sync-protocol.cjs");
 
 class ActionExecutor {
   constructor({
@@ -116,6 +120,14 @@ class ActionExecutor {
         await this.browser.pressKey(step.key);
         return;
 
+      case "browser_mark_teacher_state":
+        await this.browser.markTeacherState();
+        return;
+
+      case "browser_teacher_sync":
+        await this.runTeacherSync(step);
+        return;
+
       case "verify_url_contains":
         this.browser.verifyUrlContains(step.value);
         return;
@@ -129,6 +141,11 @@ class ActionExecutor {
         return;
 
       case "notify":
+        this.sendStatus(
+          step.text || "Задачата приключи.",
+          "ready"
+        );
+
         if (this.Notification.isSupported()) {
           new this.Notification({
             title: step.title || "DAVID",
@@ -139,6 +156,73 @@ class ActionExecutor {
 
       default:
         throw new Error(`Неподдържано действие: ${step.action}`);
+    }
+  }
+
+  async runTeacherSync(step) {
+    const maxRounds = Math.max(
+      1,
+      Math.min(3, Number(step.max_rounds || 3))
+    );
+
+    const timeout = Math.max(
+      15000,
+      Math.min(180000, Number(step.timeout_ms || 120000))
+    );
+
+    for (let round = 1; round <= maxRounds; round += 1) {
+      const response = await this.browser.waitForTeacherResponse(timeout);
+      const packet = parseTeacherPacket(response.text);
+
+      this.sendStatus(
+        packet.summary || `GPT Teacher round ${round}`,
+        packet.status === "blocked" ? "warning" : "training"
+      );
+
+      if (packet.status === "done") {
+        this.sendStatus("GPT Teacher Sync приключи успешно.", "ready");
+        return;
+      }
+
+      if (packet.status === "blocked") {
+        throw new Error(
+          packet.summary || "GPT Teacher спря задачата като неясна или рискова."
+        );
+      }
+
+      const results = [];
+
+      for (const action of packet.actions) {
+        try {
+          await this.executeStep(action);
+          results.push({
+            action: action.action,
+            ok: true
+          });
+        } catch (error) {
+          results.push({
+            action: action.action,
+            ok: false,
+            error: error.message
+          });
+          break;
+        }
+      }
+
+      const resultMessage = buildTeacherResult({
+        round,
+        packet,
+        results
+      });
+
+      await this.browser.sendTeacherMessage(resultMessage);
+
+      if (round === maxRounds) {
+        this.sendStatus(
+          "Teacher Sync достигна безопасния лимит от 3 кръга.",
+          "warning"
+        );
+      }
     }
   }
 
