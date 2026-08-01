@@ -163,7 +163,8 @@ class PowerShellSession {
       height: 760,
       minWidth: 760,
       minHeight: 480,
-      title: "DAVID PowerShell",
+      // Initial title bypasses the global overlay patch in main.cjs.
+      title: "DAVID Browser",
       show: false,
       frame: true,
       resizable: true,
@@ -186,6 +187,7 @@ class PowerShellSession {
         return;
       }
 
+      this.window.setTitle("DAVID PowerShell");
       this.windowReady = true;
       this.window.show();
       this.window.focus();
