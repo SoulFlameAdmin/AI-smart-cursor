@@ -1,5 +1,25 @@
 "use strict";
 
+const PROMPT_SELECTOR =
+  "#prompt-textarea, " +
+  "[contenteditable='true'][data-virtualkeyboard], " +
+  "[contenteditable='true'].ProseMirror, " +
+  "textarea[data-id='root'], textarea";
+
+const SEND_SELECTOR =
+  "button[data-testid='send-button']:not([disabled]), " +
+  "button[aria-label='Send prompt']:not([disabled]), " +
+  "button[aria-label='Изпращане на подкана']:not([disabled]), " +
+  "button[aria-label='Send message']:not([disabled])";
+
+const ASSISTANT_SELECTOR =
+  "[data-message-author-role='assistant']";
+
+const STOP_SELECTOR =
+  "button[data-testid='stop-button'], " +
+  "button[aria-label='Stop generating'], " +
+  "button[aria-label='Спиране на генерирането']";
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -19,6 +39,7 @@ class BrowserAgent {
     this.BrowserWindow = BrowserWindow;
     this.sendStatus = sendStatus;
     this.window = null;
+    this.teacherBaseline = null;
   }
 
   ensureWindow() {
@@ -32,7 +53,6 @@ class BrowserAgent {
       minWidth: 900,
       minHeight: 600,
       title: "DAVID Browser",
-      /* DAVID_BROWSER_WINDOW_OPTIONS_BEGIN */
       show: false,
       frame: true,
       resizable: true,
@@ -42,7 +62,6 @@ class BrowserAgent {
       alwaysOnTop: false,
       skipTaskbar: false,
       autoHideMenuBar: true,
-      /* DAVID_BROWSER_WINDOW_OPTIONS_END */
       backgroundColor: "#111111",
       webPreferences: {
         nodeIntegration: false,
@@ -54,7 +73,6 @@ class BrowserAgent {
       }
     });
 
-    /* DAVID_BROWSER_WINDOW_READY_BEGIN */
     this.window.once("ready-to-show", () => {
       const window = this.window;
 
@@ -70,7 +88,6 @@ class BrowserAgent {
     this.window.on("page-title-updated", (event) => {
       event.preventDefault();
     });
-    /* DAVID_BROWSER_WINDOW_READY_END */
 
     this.window.webContents.setWindowOpenHandler(({ url }) => {
       this.window.loadURL(validateHttpUrl(url));
@@ -79,6 +96,7 @@ class BrowserAgent {
 
     this.window.on("closed", () => {
       this.window = null;
+      this.teacherBaseline = null;
     });
 
     return this.window;
@@ -95,7 +113,6 @@ class BrowserAgent {
 
     await window.loadURL(target);
 
-    /* DAVID_BROWSER_WINDOW_OPEN_BEGIN */
     if (window.isMinimized()) {
       window.restore();
     }
@@ -104,10 +121,11 @@ class BrowserAgent {
       window.setFullScreen(false);
     }
 
+    window.setAlwaysOnTop(false);
+    window.setSkipTaskbar(false);
     window.maximize();
     window.show();
     window.focus();
-    /* DAVID_BROWSER_WINDOW_OPEN_END */
   }
 
   async waitForSelector(selector, timeout = 15000) {
@@ -323,11 +341,89 @@ class BrowserAgent {
 
     return true;
   }
+
+  async getAssistantState() {
+    const window = this.ensureWindow();
+
+    return window.webContents.executeJavaScript(
+      `(() => {
+        const nodes = Array.from(
+          document.querySelectorAll(${JSON.stringify(ASSISTANT_SELECTOR)})
+        );
+
+        const last = nodes[nodes.length - 1] || null;
+        const text = last
+          ? String(last.innerText || last.textContent || "").trim()
+          : "";
+
+        const generating = Boolean(
+          document.querySelector(${JSON.stringify(STOP_SELECTOR)})
+        );
+
+        return {
+          count: nodes.length,
+          text,
+          generating
+        };
+      })()`,
+      true
+    );
+  }
+
+  async markTeacherState() {
+    this.teacherBaseline = await this.getAssistantState();
+    return this.teacherBaseline;
+  }
+
+  async waitForTeacherResponse(timeout = 120000) {
+    const started = Date.now();
+    const baseline = this.teacherBaseline || await this.getAssistantState();
+    let stableText = "";
+    let stableSince = 0;
+
+    this.sendStatus("Чакам отговора на GPT Teacher...", "training");
+
+    while (Date.now() - started < timeout) {
+      const state = await this.getAssistantState();
+      const changed =
+        state.count > baseline.count ||
+        (state.text && state.text !== baseline.text);
+
+      if (changed && state.text && !state.generating) {
+        if (state.text !== stableText) {
+          stableText = state.text;
+          stableSince = Date.now();
+        } else if (Date.now() - stableSince >= 1600) {
+          this.teacherBaseline = state;
+          return state;
+        }
+      } else {
+        stableText = "";
+        stableSince = 0;
+      }
+
+      await sleep(500);
+    }
+
+    throw new Error("GPT Teacher не завърши отговора в позволеното време.");
+  }
+
+  async sendTeacherMessage(text) {
+    await this.waitForSelector(PROMPT_SELECTOR, 30000);
+    await this.markTeacherState();
+    await this.typeSelector(PROMPT_SELECTOR, text);
+    await sleep(500);
+    await this.waitForSelector(SEND_SELECTOR, 15000);
+    await this.clickSelector(SEND_SELECTOR);
+  }
 }
 
 module.exports = {
   BrowserAgent,
   sleep,
-  validateHttpUrl
+  validateHttpUrl,
+  PROMPT_SELECTOR,
+  SEND_SELECTOR,
+  ASSISTANT_SELECTOR,
+  STOP_SELECTOR
 };
-
