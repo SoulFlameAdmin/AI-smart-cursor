@@ -13,6 +13,16 @@ const DAVID_UPGRADE_REQUEST_MESSAGE =
   "тестовете и резултата, когато връзката е настроена. " +
   "Преди merge пусни локалните тестове и GitHub Actions. " +
   "При неуспех запази стабилната версия и подготви rollback.\n\n" +
+  "DAVID Teacher Sync 0.1 е активен. Отговори САМО с един JSON " +
+  "обект, без обяснение извън него. Форматът е: " +
+  "{\"protocol\":\"david_teacher_sync_v1\",\"status\":" +
+  "\"action|done|blocked\",\"summary\":\"кратко\",\"actions\":[]}. " +
+  "При status=action използвай само действия wait, system_click, " +
+  "system_type или notify. Не използвай shell, PowerShell, изтриване, " +
+  "пароли, плащания или скрити действия. DAVID ще иска разрешение " +
+  "преди всяко местно кликване или писане. Не отгатвай координати; " +
+  "при недостатъчно визуална информация върни status=blocked. " +
+  "След резултат от DAVID върни следващия JSON пакет.\n\n" +
   "Допълнителна задача от DAVID: {{details}}";
 
 const PROMPT_SELECTOR =
@@ -57,6 +67,9 @@ function createTeacherSendSteps(message) {
       timeout_ms: 15000
     },
     {
+      action: "browser_mark_teacher_state"
+    },
+    {
       action: "browser_click_selector",
       selector: SEND_SELECTOR
     },
@@ -77,7 +90,7 @@ function createChatGptTeacherSkill() {
     title: "Пиши в DAVID Teacher GPT разговора",
     description:
       "Вграден локален skill. Отваря постоянния DAVID Teacher разговор и изпраща зададеното съобщение.",
-    version: 2,
+    version: 3,
     status: "approved",
     source: "builtin",
     risk_level: "low",
@@ -106,11 +119,11 @@ function createUpgradeBridgeSkill() {
     skill_key: "builtin_david_upgrade_bridge",
     title: "Поискай upgrade от DAVID GPT Teacher",
     description:
-      "Изпраща стандартизирана upgrade заявка към постоянния DAVID Teacher разговор.",
-    version: 1,
+      "Изпраща upgrade заявка и продължава чрез безопасен GPT Teacher Sync цикъл.",
+    version: 2,
     status: "approved",
     source: "builtin",
-    risk_level: "low",
+    risk_level: "medium",
     matcher: {
       type: "regex",
       pattern:
@@ -129,9 +142,14 @@ function createUpgradeBridgeSkill() {
     steps: [
       ...createTeacherSendSteps(DAVID_UPGRADE_REQUEST_MESSAGE),
       {
+        action: "browser_teacher_sync",
+        max_rounds: 3,
+        timeout_ms: 120000
+      },
+      {
         action: "notify",
-        title: "DAVID Upgrade Bridge",
-        text: "Upgrade заявката е изпратена към GPT Teacher."
+        title: "DAVID Teacher Sync",
+        text: "Безопасният Teacher Sync цикъл приключи."
       }
     ]
   };
