@@ -39,6 +39,66 @@ jobs:
           Expand-Archive -Path "DAVID_Personal_Source.zip" -DestinationPath "src" -Force
           if (-not (Test-Path "src/DAVID_Smart_Cursor_v0_1_1/main.py")) { throw "DAVID source was not reconstructed" }
 
+      - name: Apply v0.1.2 fullscreen safety hotfix
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          base = Path("src/DAVID_Smart_Cursor_v0_1_1")
+          overlay_path = base / "david" / "overlay.py"
+          overlay = overlay_path.read_text(encoding="utf-8")
+          overlay = overlay.replace(
+              '        self.window.geometry(\n            f"{self.window.winfo_screenwidth()}x{self.window.winfo_screenheight()}+0+0"\n        )',
+              '        self.window.geometry("280x280+0+0")',
+          )
+          overlay = overlay.replace(
+              '        if enabled:\n            self.window.deiconify()',
+              '        if enabled:\n            self.window.deiconify()\n            self.window.lift()\n            self.root.after_idle(self._make_click_through)\n            self.root.after(150, self._make_click_through)',
+          )
+          overlay = overlay.replace(
+              '            x, y = pyautogui.position()\n            self.points.appendleft((int(x), int(y)))',
+              '            x, y = pyautogui.position()\n            left = int(x) - 140\n            top = int(y) - 140\n            self.window.geometry(f"280x280+{left}+{top}")\n            self.points.appendleft((int(x), int(y)))',
+          )
+          overlay = overlay.replace(
+              '                    x1, y1, x2, y2,',
+              '                    x1 - left, y1 - top, x2 - left, y2 - top,',
+          )
+          overlay = overlay.replace(
+              '                x - 7, y - 7, x + 7, y + 7,',
+              '                x - left - 7, y - top - 7, x - left + 7, y - top + 7,',
+          )
+          overlay_path.write_text(overlay, encoding="utf-8")
+
+          ui_path = base / "david" / "ui.py"
+          ui = ui_path.read_text(encoding="utf-8")
+          ui = ui.replace(
+              "self.overlay_var = tk.BooleanVar(value=True)",
+              "self.overlay_var = tk.BooleanVar(value=False)",
+          )
+          ui = ui.replace("        self.overlay.set_enabled(True)\n", "")
+          ui = ui.replace(
+              "Показвай DAVID Smart Cursor overlay",
+              "Показвай безопасен DAVID cursor trail (изключен по подразбиране)",
+          )
+          ui_path.write_text(ui, encoding="utf-8")
+
+          (base / "david" / "__init__.py").write_text(
+              '__version__ = "0.1.2"\n', encoding="utf-8"
+          )
+          for filename in ("README_BG.md", "START_HERE.txt"):
+              path = base / filename
+              text = path.read_text(encoding="utf-8").replace("v0.1.1", "v0.1.2")
+              text += (
+                  "\n\nБЕЗОПАСНОСТ v0.1.2: overlay е изключен по подразбиране "
+                  "и никога не покрива целия екран.\n"
+              )
+              path.write_text(text, encoding="utf-8")
+          '@ | Set-Content -Path safety_patch.py -Encoding UTF8
+          python safety_patch.py
+          python -m compileall -q src/DAVID_Smart_Cursor_v0_1_1
+          Compress-Archive -Path "src/DAVID_Smart_Cursor_v0_1_1" -DestinationPath "DAVID_Personal_Source_v012.zip" -Force
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -62,7 +122,7 @@ jobs:
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
-            --name DAVID_Smart_Cursor_Personal `
+            --name DAVID_Smart_Cursor_Personal_v012 `
             --paths src/DAVID_Smart_Cursor_v0_1_1 `
             --add-data "src/DAVID_Smart_Cursor_v0_1_1/config.json;." `
             --add-data "src/DAVID_Smart_Cursor_v0_1_1/lab;lab" `
@@ -76,24 +136,24 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path package -Force | Out-Null
-          Copy-Item "dist/DAVID_Smart_Cursor_Personal.exe" "package/DAVID_Smart_Cursor_Personal.exe"
+          Copy-Item "dist/DAVID_Smart_Cursor_Personal_v012.exe" "package/DAVID_Smart_Cursor_Personal_v012.exe"
           Copy-Item "src/DAVID_Smart_Cursor_v0_1_1/README_BG.md" "package/README_BG.md"
           Copy-Item "src/DAVID_Smart_Cursor_v0_1_1/START_HERE.txt" "package/START_HERE.txt"
-          Copy-Item "DAVID_Personal_Source.zip" "package/DAVID_Personal_Source_Code.zip"
-          $exeHash = (Get-FileHash "package/DAVID_Smart_Cursor_Personal.exe" -Algorithm SHA256).Hash.ToLower()
-          $sourceHash = (Get-FileHash "package/DAVID_Personal_Source_Code.zip" -Algorithm SHA256).Hash.ToLower()
+          Copy-Item "DAVID_Personal_Source_v012.zip" "package/DAVID_Personal_Source_Code_v012.zip"
+          $exeHash = (Get-FileHash "package/DAVID_Smart_Cursor_Personal_v012.exe" -Algorithm SHA256).Hash.ToLower()
+          $sourceHash = (Get-FileHash "package/DAVID_Personal_Source_Code_v012.zip" -Algorithm SHA256).Hash.ToLower()
           @"
-          DAVID_Smart_Cursor_Personal.exe  $exeHash
-          DAVID_Personal_Source_Code.zip   $sourceHash
+          DAVID_Smart_Cursor_Personal_v012.exe  $exeHash
+          DAVID_Personal_Source_Code_v012.zip   $sourceHash
           "@ | Set-Content -Path "package/SHA256SUMS.txt" -Encoding UTF8
-          Compress-Archive -Path "package/*" -DestinationPath "DAVID_Smart_Cursor_Personal_Supabase_Windows.zip" -Force
+          Compress-Archive -Path "package/*" -DestinationPath "DAVID_Smart_Cursor_Personal_v012_Windows.zip" -Force
 
       - name: Upload Personal Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: DAVID-Smart-Cursor-Personal-Supabase-v011
-          path: DAVID_Smart_Cursor_Personal_Supabase_Windows.zip
+          name: DAVID-Smart-Cursor-Personal-Supabase-v012
+          path: DAVID_Smart_Cursor_Personal_v012_Windows.zip
           if-no-files-found: error
           retention-days: 30
 
-# Build revision: all six verified source chunks present.
+# v0.1.2: overlay disabled by default and limited to a small non-fullscreen window.
