@@ -1,0 +1,54 @@
+{
+  "name": "david-smart-cursor-v1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DAVID Smart Cursor: transparent Electron overlay, local skill engine and Supabase GPT Teacher loop.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env DAVID_DEV=1 electron .",
+    "test": "node tests/run-tests.cjs",
+    "dist:win": "electron-builder --win nsis",
+    "pack:win": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.111.0",
+    "dotenv": "16.6.1"
+  },
+  "devDependencies": {
+    "cross-env": "7.0.3",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.soulflame.davidcursor",
+    "productName": "DAVID Smart Cursor",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "core/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

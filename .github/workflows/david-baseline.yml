@@ -1,0 +1,71 @@
+name: DAVID Baseline
+
+on:
+  push:
+    branches:
+      - main
+      - "sync/**"
+      - "upgrade/**"
+    paths:
+      - "main.cjs"
+      - "preload.cjs"
+      - "core/**"
+      - "renderer/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/david-baseline.yml"
+
+  pull_request:
+    paths:
+      - "main.cjs"
+      - "preload.cjs"
+      - "core/**"
+      - "renderer/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/david-baseline.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --include=dev --include=optional --no-audit --no-fund
+
+      - name: Existing DAVID tests
+        run: npm test
+
+      - name: DAVID baseline tests
+        run: node tests/baseline-tests.cjs
+
+      - name: Syntax checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $files = Get-ChildItem -Recurse -File |
+            Where-Object {
+              $_.Extension -in @(".js", ".cjs", ".mjs") -and
+              $_.FullName -notmatch "\\node_modules\\|\\.git\\|\\dist\\|\\build\\|\\coverage\\"
+            }
+
+          foreach ($file in $files) {
+            node --check $file.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "Syntax check failed: $($file.FullName)"
+            }
+          }

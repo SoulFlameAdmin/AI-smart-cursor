@@ -1,0 +1,48 @@
+﻿<!DOCTYPE html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+  >
+  <title>DAVID Smart Cursor</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <canvas id="trail"></canvas>
+
+  <div id="status" class="status status--hidden">
+    <span class="status__dot"></span>
+    <span id="statusText">DAVID е активен</span>
+  </div>
+
+  <section
+    id="commandPanel"
+    class="command-panel command-panel--hidden"
+  >
+    <div class="command-panel__label">DAVID COMMAND</div>
+
+    <form id="commandForm">
+      <input
+        id="commandInput"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Кажи какво да направя..."
+      >
+      <button type="submit">Изпълни</button>
+    </form>
+
+    <div id="modeText" class="command-panel__hint">
+      Зареждане...
+    </div>
+
+    <div class="command-panel__hint">
+      Esc за затваряне · Ctrl+Shift+D за отваряне
+    </div>
+  </section>
+
+  <script src="./renderer.js"></script>
+</body>
+</html>

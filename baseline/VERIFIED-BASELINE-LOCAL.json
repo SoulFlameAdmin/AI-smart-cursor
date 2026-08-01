@@ -1,0 +1,23 @@
+﻿{
+    "protocol":  "david-verified-local-baseline-v7",
+    "status":  "PASS",
+    "repository":  "SoulFlameAdmin/AI-smart-cursor",
+    "branch":  "sync/local-cursor-20260801-122549",
+    "local_head":  "3292ed9a4d90e86962de9aef5528d3402b7b423f",
+    "github_sync":  "PENDING_AUTH_REPAIR",
+    "node":  "v24.18.1",
+    "electron":  "43.2.0",
+    "skill_version":  2,
+    "backup":  "E:\\DAVID-BACKUPS\\builtin-skills-before-v7-20260801-130727.cjs",
+    "checks":  {
+                   "gpt_skill_match":  "PASS",
+                   "existing_tests":  "PASS",
+                   "baseline_tests":  "PASS",
+                   "syntax":  "PASS",
+                   "runtime_stability":  "PASS",
+                   "command_panel_hotkey":  "PASS",
+                   "duplicate_request_function":  "WARN",
+                   "duplicate_request_function_count":  2
+               },
+    "verified_at":  "2026-08-01T13:08:00.4444440+03:00"
+}

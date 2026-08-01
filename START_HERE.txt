@@ -1,0 +1,5 @@
+1) Instalirai Node.js LTS
+2) Pusni scripts\install-and-run.bat
+3) Natисni Ctrl+Shift+D
+4) Napishi: otvori yt i pusni 2pac
+5) Za Supabase vidi README_BG.md
