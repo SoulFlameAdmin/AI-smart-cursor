@@ -7,6 +7,12 @@ on:
     paths:
       - "build/**"
       - ".github/workflows/build-windows.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "build/**"
+      - ".github/workflows/build-windows.yml"
+      - "BUILD_TRIGGER.txt"
 
 permissions:
   contents: read
