@@ -41,6 +41,7 @@ assert.doesNotThrow(() => validateSkill(teacherSkill));
 const teacherMatch = matchSkill("мисли провери тестовете", [teacherSkill]);
 assert.ok(teacherMatch, "Teacher Loop skill should match 'мисли'.");
 assert.strictEqual(teacherMatch.variables.goal, "провери тестовете");
+assert.ok(matchSkill("Мисли.", [teacherSkill]));
 
 const teacherRendered = renderTemplate(
   teacherSkill.steps,
