@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const crypto = require("crypto");
 const { matchSkill, renderTemplate } = require("./skill-matcher.cjs");
@@ -33,7 +33,10 @@ class SkillEngine {
     ]);
 
     if (existing) {
-      this.sendStatus(`РР·РїРѕР»Р·РІР°Рј skill: ${existing.skill.title}`, "working");
+      this.sendStatus(
+        `Използвам skill: ${existing.skill.title}`,
+        "working"
+      );
       return this.executeAndLearn({
         command,
         skill: existing.skill,
@@ -43,7 +46,10 @@ class SkillEngine {
       });
     }
 
-    this.sendStatus("РќСЏРјР° skill. РР·РїСЂР°С‰Р°Рј Р·Р°РґР°С‡Р°С‚Р° Р·Р° РѕР±СѓС‡РµРЅРёРµ.", "training");
+    this.sendStatus(
+      "Няма готов skill. Изпращам задачата към GPT Teacher.",
+      "training"
+    );
 
     let previousSkill = null;
     let lastRun = null;
@@ -65,7 +71,7 @@ class SkillEngine {
       const variables = matched ? matched.variables : {};
 
       this.sendStatus(
-        `РўРµСЃС‚ ${attempt}/${this.maxAttempts}: ${skill.title}`,
+        `Тест ${attempt}/${this.maxAttempts}: ${skill.title}`,
         "training"
       );
 
@@ -78,10 +84,18 @@ class SkillEngine {
         saveOnSuccess: true
       });
 
+      if (lastResult.cancelled) {
+        return {
+          ok: false,
+          cancelled: true,
+          message: "Отказа предложения план. Нищо не беше изпълнено."
+        };
+      }
+
       if (lastResult.ok) {
         return {
           ok: true,
-          message: `РќР°СѓС‡РёС… Рё РёР·РїСЉР»РЅРёС…: ${skill.title}`,
+          message: `Научих и изпълних: ${skill.title}`,
           skill: skill.skill_key,
           attempt
         };
@@ -90,16 +104,16 @@ class SkillEngine {
       previousSkill = skill;
       lastRun = lastResult.run;
       this.sendStatus(
-        `РўРµСЃС‚СЉС‚ СЃРµ РїСЂРѕРІР°Р»Рё. GPT РЅР°РґРіСЂР°Р¶РґР° РІРµСЂСЃРёСЏ ${Number(skill.version || 0) + 1}...`,
+        `Тестът се провали. GPT надгражда версия ${Number(skill.version || 0) + 1}...`,
         "training"
       );
     }
 
     const message =
       lastResult?.run?.error ||
-      "Skill-СЉС‚ РЅРµ РїСЂРµРјРёРЅР° СѓСЃРїРµС€РЅРѕ РјР°РєСЃРёРјР°Р»РЅРёСЏ Р±СЂРѕР№ С‚РµСЃС‚РѕРІРµ.";
+      "Skill-ът не премина успешно максималния брой тестове.";
 
-    this.sendStatus(`РќРµСѓСЃРїРµС€РЅРѕ РѕР±СѓС‡РµРЅРёРµ: ${message}`, "error");
+    this.sendStatus(`Неуспешно обучение: ${message}`, "error");
     return { ok: false, message };
   }
 
@@ -112,6 +126,19 @@ class SkillEngine {
     saveOnSuccess = false
   }) {
     const renderedSteps = renderTemplate(skill.steps, variables);
+
+    if (typeof this.executor.confirmPlan === "function") {
+      const allowed = await this.executor.confirmPlan({
+        command,
+        skill: { ...skill, steps: renderedSteps }
+      });
+
+      if (!allowed) {
+        this.sendStatus("Планът беше отказан. Нищо не е изпълнено.", "warning");
+        return { ok: false, cancelled: true, run: null };
+      }
+    }
+
     const run = await this.executor.run(renderedSteps);
 
     const localRun = {
@@ -136,7 +163,7 @@ class SkillEngine {
       });
     } catch (error) {
       this.sendStatus(
-        `РР·РїСЉР»РЅРµРЅРёРµС‚Рѕ Рµ Р»РѕРєР°Р»РЅРѕ Р·Р°РїРёСЃР°РЅРѕ, РЅРѕ Supabase report СЃРµ РїСЂРѕРІР°Р»Рё: ${error.message}`,
+        `Изпълнението е локално записано, но Supabase report се провали: ${error.message}`,
         "warning"
       );
     }
@@ -150,17 +177,17 @@ class SkillEngine {
           await this.teacher.markSkillVerified(verified);
         } catch (error) {
           this.sendStatus(
-            `Skill-СЉС‚ Рµ Р»РѕРєР°Р»РЅРѕ Р·Р°РїР°Р·РµРЅ, РЅРѕ remote verify СЃРµ РїСЂРѕРІР°Р»Рё: ${error.message}`,
+            `Skill-ът е локално запазен, но remote verify се провали: ${error.message}`,
             "warning"
           );
         }
       }
 
-      this.sendStatus(`Р“РѕС‚РѕРІРѕ: ${skill.title}`, "success");
+      this.sendStatus(`Готово: ${skill.title}`, "success");
       return { ok: true, run };
     }
 
-    this.sendStatus(`РџСЂРѕРІР°Р»РµРЅР° СЃС‚СЉРїРєР°: ${run.error}`, "error");
+    this.sendStatus(`Провалена стъпка: ${run.error}`, "error");
     return { ok: false, run };
   }
 
@@ -189,4 +216,3 @@ class SkillEngine {
 }
 
 module.exports = { SkillEngine };
-

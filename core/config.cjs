@@ -20,6 +20,21 @@ function loadConfig() {
       "",
     teacherFunction:
       process.env.SUPABASE_TEACHER_FUNCTION || "teacher-plan",
+    teacherMode:
+      String(process.env.DAVID_TEACHER_MODE || "electron-chat")
+        .trim()
+        .toLowerCase(),
+    teacherChatUrl: process.env.DAVID_TEACHER_CHAT_URL || "",
+    teacherTimeoutMs: parseInteger(
+      process.env.DAVID_TEACHER_TIMEOUT_MS,
+      180000,
+      30000,
+      600000
+    ),
+    allowDemoFallback: parseBoolean(
+      process.env.DAVID_ALLOW_DEMO_FALLBACK,
+      false
+    ),
     email: process.env.DAVID_USER_EMAIL || "",
     password: process.env.DAVID_USER_PASSWORD || "",
     maxTrainingAttempts: parseInteger(
