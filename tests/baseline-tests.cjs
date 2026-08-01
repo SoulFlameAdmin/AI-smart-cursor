@@ -345,6 +345,22 @@ assert.ok(
   "DAVID Browser must restore after minimization."
 );
 
+// DAVID_CHATGPT_REDIRECT_LOAD_FIX_TEST
+assert.ok(
+  browserAgentSource.includes("isUsableChatGptPage"),
+  "DAVID Browser does not validate redirected ChatGPT pages."
+);
+
+assert.ok(
+  browserAgentSource.includes("chrome-error://"),
+  "DAVID Browser does not reject Chromium error pages."
+);
+
+assert.ok(
+  browserAgentSource.includes("location.assign"),
+  "DAVID Browser does not retry the Teacher URL after failed navigation."
+);
+
 assert.ok(
   browserAgentSource.includes("waitForTeacherResponse"),
   "DAVID Browser cannot wait for a GPT response."
