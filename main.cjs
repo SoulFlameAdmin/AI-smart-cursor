@@ -1,4 +1,4 @@
-﻿/* DAVID_FULL_SCREEN_PATCH_BEGIN */
+/* DAVID_FULL_SCREEN_PATCH_BEGIN */
 const __davidElectronFullScreen = require("electron");
 
 __davidElectronFullScreen.app.on(
@@ -482,31 +482,6 @@ function toggleCommandPanel() {
   }
 }
 
-function isChatGptWriteIntent(text) {
-  return /^(?:пиши|pishi|напиши|napishi|изпрати|izprati)(?:\s+(?:на|в|до|do))?\s+(?:gpt|chatgpt)\s*[.!?]*$/iu.test(
-    String(text || "").trim()
-  );
-}
-
-function requestChatGptMessage() {
-  const state =
-    commandPanelState ||
-    getOverlayForCursor() ||
-    getPrimaryOverlay();
-
-  pendingDavidInput = {
-    type: "chatgpt_message",
-    createdAt: Date.now()
-  };
-
-  safeSend(state, "david:request-input", {
-    mode: "chatgpt_message",
-    prompt: "Какво да изпратя на GPT?",
-    placeholder: "Напиши съобщението за GPT..."
-  });
-
-  sendStatus("Какво да изпратя на GPT?", "working");
-}
 function isBareChatGptIntent(text) {
   return /^(?:пиши|pishi|напиши|napishi|прати|prati|изпрати|izprati)(?:\s+(?:на|в|до|do))?\s+(?:gpt|chatgpt)\s*[.!?]*$/iu.test(
     String(text || "").trim()
