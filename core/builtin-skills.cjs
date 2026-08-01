@@ -16,7 +16,7 @@ function createTeacherUpgradeLoopSkill() {
     matcher: {
       type: "regex",
       pattern:
-        "^(?:мисли|misli|стартирай\\s+teacher\\s+loop|start\\s+teacher\\s+loop)(?:\\s+(.+))?$",
+        "^(?:мисли|misli|стартирай\\s+teacher\\s+loop|start\\s+teacher\\s+loop)(?:\\s+(.+?))?\\s*[.!?…]*$",
       flags: "iu",
       variables: ["goal"]
     },
