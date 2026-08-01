@@ -11,6 +11,7 @@ const ALLOWED_ACTIONS = new Set([
   "browser_type_selector",
   "browser_press_key",
   "verify_url_contains",
+  "teacher_loop",
   "system_click",
   "system_type",
   "notify"
