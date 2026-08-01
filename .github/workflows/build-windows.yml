@@ -5,12 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "build/**"
+      - "payload/**"
       - ".github/workflows/build-windows.yml"
   pull_request:
     branches: [main]
     paths:
-      - "build/**"
+      - "payload/**"
       - ".github/workflows/build-windows.yml"
       - "BUILD_TRIGGER.txt"
 
@@ -26,13 +26,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct DAVID Personal source
+      - name: Reconstruct and verify DAVID Personal source
         shell: pwsh
         run: |
-          $parts = Get-ChildItem "build/v011/source_*.b64" | Sort-Object Name
-          if ($parts.Count -ne 4) { throw "Expected 4 DAVID v0.1.1 source parts" }
+          $parts = Get-ChildItem "payload/v011/source_*.b64" | Sort-Object Name
+          if ($parts.Count -ne 6) { throw "Expected 6 DAVID v0.1.1 source parts, found $($parts.Count)" }
           $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
           [IO.File]::WriteAllBytes("DAVID_Personal_Source.zip", [Convert]::FromBase64String($b64))
+          $actualHash = (Get-FileHash "DAVID_Personal_Source.zip" -Algorithm SHA256).Hash.ToLower()
+          $expectedHash = "122f1f5fc3d662f0172d7fd79cc4a7bba13f1a91f996aad689fb404d87dac502"
+          if ($actualHash -ne $expectedHash) { throw "Source archive SHA256 mismatch: $actualHash" }
           Expand-Archive -Path "DAVID_Personal_Source.zip" -DestinationPath "src" -Force
           if (-not (Test-Path "src/DAVID_Smart_Cursor_v0_1_1/main.py")) { throw "DAVID source was not reconstructed" }
 
