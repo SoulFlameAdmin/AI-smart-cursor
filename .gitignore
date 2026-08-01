@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Secrets
@@ -23,6 +23,11 @@ build/
 coverage/
 .cache/
 .next/
+
+# Verification output
+baseline/logs/
+baseline/*.stdout.log
+baseline/*.stderr.log
 
 # Backups and crash files
 backup/
