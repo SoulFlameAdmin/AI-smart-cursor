@@ -1,0 +1,13 @@
+{
+  "name": "david-brain",
+  "version": "0.1.0-start",
+  "private": true,
+  "description": "Intent, upgrade protocol and local memory core for DAVID Smart Cursor",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/run-tests.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
