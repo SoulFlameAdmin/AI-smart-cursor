@@ -1,0 +1,43 @@
+﻿# Dependencies
+node_modules/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Local DAVID state
+david-data/
+user-data/
+userdata/
+logs/
+.david-sync.json
+
+# Generated output
+dist/
+build/
+coverage/
+.cache/
+.next/
+
+# Backups and crash files
+backup/
+backups/
+backup-*/
+*.backup
+*.backup-*
+*.bak
+*.tmp
+*.log
+*.dmp
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
