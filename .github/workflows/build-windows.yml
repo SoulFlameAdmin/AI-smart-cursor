@@ -95,3 +95,5 @@ jobs:
           path: DAVID_Smart_Cursor_Personal_Supabase_Windows.zip
           if-no-files-found: error
           retention-days: 30
+
+# Build revision: all six verified source chunks present.
