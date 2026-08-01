@@ -5,12 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "build/**"
+      - "payload/**"
       - ".github/workflows/build-windows.yml"
   pull_request:
     branches: [main]
     paths:
-      - "build/**"
+      - "payload/**"
       - ".github/workflows/build-windows.yml"
       - "BUILD_TRIGGER.txt"
 
@@ -26,72 +26,74 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct source archive
+      - name: Reconstruct and verify DAVID Personal source
         shell: pwsh
         run: |
-          $parts = Get-ChildItem "build/source_*.b64" | Sort-Object Name
+          $parts = Get-ChildItem "payload/v011/source_*.b64" | Sort-Object Name
+          if ($parts.Count -ne 6) { throw "Expected 6 DAVID v0.1.1 source parts, found $($parts.Count)" }
           $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
-          [IO.File]::WriteAllBytes("DAVID_source.zip", [Convert]::FromBase64String($b64))
-          Expand-Archive -Path "DAVID_source.zip" -DestinationPath "src" -Force
+          [IO.File]::WriteAllBytes("DAVID_Personal_Source.zip", [Convert]::FromBase64String($b64))
+          $actualHash = (Get-FileHash "DAVID_Personal_Source.zip" -Algorithm SHA256).Hash.ToLower()
+          $expectedHash = "122f1f5fc3d662f0172d7fd79cc4a7bba13f1a91f996aad689fb404d87dac502"
+          if ($actualHash -ne $expectedHash) { throw "Source archive SHA256 mismatch: $actualHash" }
+          Expand-Archive -Path "DAVID_Personal_Source.zip" -DestinationPath "src" -Force
+          if (-not (Test-Path "src/DAVID_Smart_Cursor_v0_1_1/main.py")) { throw "DAVID source was not reconstructed" }
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: src/requirements.txt
+          cache-dependency-path: src/DAVID_Smart_Cursor_v0_1_1/requirements.txt
 
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install -r src/requirements.txt
+          python -m pip install -r src/DAVID_Smart_Cursor_v0_1_1/requirements.txt
           python -m pip install pyinstaller
 
-      - name: Build EXE
+      - name: Compile source
+        shell: pwsh
+        run: |
+          python -m compileall -q src/DAVID_Smart_Cursor_v0_1_1
+
+      - name: Build Personal EXE
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed `
-            --name DAVID_Smart_Cursor `
-            --paths src `
-            --add-data "src/config.json;." `
-            --add-data "src/lab;lab" `
+            --name DAVID_Smart_Cursor_Personal `
+            --paths src/DAVID_Smart_Cursor_v0_1_1 `
+            --add-data "src/DAVID_Smart_Cursor_v0_1_1/config.json;." `
+            --add-data "src/DAVID_Smart_Cursor_v0_1_1/lab;lab" `
             --hidden-import pynput.keyboard._win32 `
             --hidden-import pynput.mouse._win32 `
-            --collect-all supabase `
-            --collect-all gotrue `
-            --collect-all postgrest `
-            --collect-all realtime `
-            --collect-all storage3 `
-            --collect-all supafunc `
             --collect-all pyautogui `
-            src/main.py
+            --collect-all pyperclip `
+            src/DAVID_Smart_Cursor_v0_1_1/main.py
 
-      - name: Create final package
+      - name: Create final Personal package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path package -Force | Out-Null
-          Copy-Item "dist/DAVID_Smart_Cursor.exe" "package/DAVID_Smart_Cursor.exe"
-          Copy-Item "src/README_BG.md" "package/README_BG.md"
-          Copy-Item "DAVID_source.zip" "package/DAVID_Source_Code.zip"
+          Copy-Item "dist/DAVID_Smart_Cursor_Personal.exe" "package/DAVID_Smart_Cursor_Personal.exe"
+          Copy-Item "src/DAVID_Smart_Cursor_v0_1_1/README_BG.md" "package/README_BG.md"
+          Copy-Item "src/DAVID_Smart_Cursor_v0_1_1/START_HERE.txt" "package/START_HERE.txt"
+          Copy-Item "DAVID_Personal_Source.zip" "package/DAVID_Personal_Source_Code.zip"
+          $exeHash = (Get-FileHash "package/DAVID_Smart_Cursor_Personal.exe" -Algorithm SHA256).Hash.ToLower()
+          $sourceHash = (Get-FileHash "package/DAVID_Personal_Source_Code.zip" -Algorithm SHA256).Hash.ToLower()
           @"
-          DAVID SMART CURSOR v0.1
+          DAVID_Smart_Cursor_Personal.exe  $exeHash
+          DAVID_Personal_Source_Code.zip   $sourceHash
+          "@ | Set-Content -Path "package/SHA256SUMS.txt" -Encoding UTF8
+          Compress-Archive -Path "package/*" -DestinationPath "DAVID_Smart_Cursor_Personal_Supabase_Windows.zip" -Force
 
-          1. Стартирай DAVID_Smart_Cursor.exe.
-          2. Windows може да покаже SmartScreen, защото файлът още не е подписан с платен code-signing сертификат.
-          3. Влез със SoulFlame/Supabase акаунта си.
-          4. Натисни Свържи и после СТАРТ.
-          5. Започни с автономност Ниво 1 - Потвърждение.
-          6. STOP спира DAVID. Преместване на мишката в горния ляв ъгъл активира PyAutoGUI failsafe.
-
-          EXE е самостоятелен и не изисква инсталиран Python.
-          "@ | Set-Content -Path "package/START_HERE.txt" -Encoding UTF8
-          Compress-Archive -Path "package/*" -DestinationPath "DAVID_Smart_Cursor_Windows.zip" -Force
-
-      - name: Upload Windows package
+      - name: Upload Personal Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: DAVID-Smart-Cursor-Windows
-          path: DAVID_Smart_Cursor_Windows.zip
+          name: DAVID-Smart-Cursor-Personal-Supabase-v011
+          path: DAVID_Smart_Cursor_Personal_Supabase_Windows.zip
           if-no-files-found: error
           retention-days: 30
+
+# Build revision: all six verified source chunks present.
