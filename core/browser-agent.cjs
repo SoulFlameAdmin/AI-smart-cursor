@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -32,7 +32,17 @@ class BrowserAgent {
       minWidth: 900,
       minHeight: 600,
       title: "DAVID Browser",
-      show: true,
+      /* DAVID_BROWSER_WINDOW_OPTIONS_BEGIN */
+      show: false,
+      frame: true,
+      resizable: true,
+      minimizable: true,
+      maximizable: true,
+      fullscreenable: true,
+      alwaysOnTop: false,
+      skipTaskbar: false,
+      autoHideMenuBar: true,
+      /* DAVID_BROWSER_WINDOW_OPTIONS_END */
       backgroundColor: "#111111",
       webPreferences: {
         nodeIntegration: false,
@@ -43,6 +53,24 @@ class BrowserAgent {
         partition: "persist:david-browser"
       }
     });
+
+    /* DAVID_BROWSER_WINDOW_READY_BEGIN */
+    this.window.once("ready-to-show", () => {
+      const window = this.window;
+
+      if (!window || window.isDestroyed()) {
+        return;
+      }
+
+      window.maximize();
+      window.show();
+      window.focus();
+    });
+
+    this.window.on("page-title-updated", (event) => {
+      event.preventDefault();
+    });
+    /* DAVID_BROWSER_WINDOW_READY_END */
 
     this.window.webContents.setWindowOpenHandler(({ url }) => {
       this.window.loadURL(validateHttpUrl(url));
@@ -66,8 +94,20 @@ class BrowserAgent {
     );
 
     await window.loadURL(target);
+
+    /* DAVID_BROWSER_WINDOW_OPEN_BEGIN */
+    if (window.isMinimized()) {
+      window.restore();
+    }
+
+    if (window.isFullScreen()) {
+      window.setFullScreen(false);
+    }
+
+    window.maximize();
     window.show();
     window.focus();
+    /* DAVID_BROWSER_WINDOW_OPEN_END */
   }
 
   async waitForSelector(selector, timeout = 15000) {

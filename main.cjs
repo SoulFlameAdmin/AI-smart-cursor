@@ -4,6 +4,14 @@ const __davidElectronFullScreen = require("electron");
 __davidElectronFullScreen.app.on(
   "browser-window-created",
   (_event, window) => {
+    /* DAVID_BROWSER_NORMAL_WINDOW_BEGIN */
+    // GPT is a normal work window. Do not apply the transparent
+    // desktop-overlay rules to it.
+    if (String(window.getTitle() || "") === "DAVID Browser") {
+      return;
+    }
+    /* DAVID_BROWSER_NORMAL_WINDOW_END */
+
     const forceDavidFullScreen = () => {
       try {
         if (window.isDestroyed()) {
