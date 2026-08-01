@@ -3,6 +3,32 @@
 const DAVID_TEACHER_CHAT_URL =
   "https://chatgpt.com/c/6a6d7e46-3534-83eb-a42b-c981bad99c84";
 
+function createTeacherUpgradeLoopSkill() {
+  return {
+    skill_key: "builtin_teacher_upgrade_loop",
+    title: "DAVID Teacher Loop",
+    description:
+      "Изпраща целта към GPT в Electron, чака пълния отговор, изпълнява одобрения локален PowerShell upgrade и връща резултата към GPT до завършване.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "medium",
+    matcher: {
+      type: "regex",
+      pattern:
+        "^(?:мисли|misli|стартирай\\s+teacher\\s+loop|start\\s+teacher\\s+loop)(?:\\s+(.+))?$",
+      flags: "iu",
+      variables: ["goal"]
+    },
+    steps: [
+      {
+        action: "teacher_loop",
+        goal: "{{goal}}"
+      }
+    ]
+  };
+}
+
 function createChatGptTeacherSkill() {
   return {
     skill_key: "builtin_chatgpt_teacher_send",
@@ -88,11 +114,15 @@ function createChatGptTeacherSkill() {
 }
 
 function getBuiltInSkills() {
-  return [createChatGptTeacherSkill()];
+  return [
+    createTeacherUpgradeLoopSkill(),
+    createChatGptTeacherSkill()
+  ];
 }
 
 module.exports = {
   DAVID_TEACHER_CHAT_URL,
+  createTeacherUpgradeLoopSkill,
   createChatGptTeacherSkill,
   getBuiltInSkills
 };
