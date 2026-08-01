@@ -4,10 +4,15 @@ const { spawn } = require("child_process");
 const { BrowserAgent, sleep, validateHttpUrl } = require("./browser-agent.cjs");
 const { clickAt, typeText } = require("./windows-native.cjs");
 const { ALLOWED_ACTIONS } = require("./skill-schema.cjs");
+const { PowerShellSession } = require("./powershell-session.cjs");
 const {
   parseTeacherPacket,
   buildTeacherResult
 } = require("./teacher-sync-protocol.cjs");
+const {
+  parseUpgradePacket,
+  buildUpgradeResult
+} = require("./upgrade-protocol.cjs");
 
 class ActionExecutor {
   constructor({
@@ -24,6 +29,11 @@ class ActionExecutor {
     this.nativeActionsEnabled = nativeActionsEnabled;
     this.sendStatus = sendStatus;
     this.browser = new BrowserAgent({ BrowserWindow, sendStatus });
+    this.powershell = new PowerShellSession({
+      BrowserWindow,
+      confirmAction,
+      sendStatus
+    });
   }
 
   async run(steps) {
@@ -128,6 +138,10 @@ class ActionExecutor {
         await this.runTeacherSync(step);
         return;
 
+      case "browser_upgrade_loop":
+        await this.runUpgradeLoop(step);
+        return;
+
       case "verify_url_contains":
         this.browser.verifyUrlContains(step.value);
         return;
@@ -221,6 +235,88 @@ class ActionExecutor {
         this.sendStatus(
           "Teacher Sync достигна безопасния лимит от 3 кръга.",
           "warning"
+        );
+      }
+    }
+  }
+
+  async runUpgradeLoop(step) {
+    const maxRounds = Math.max(
+      1,
+      Math.min(8, Number(step.max_rounds || 6))
+    );
+
+    const timeout = Math.max(
+      15000,
+      Math.min(300000, Number(step.timeout_ms || 180000))
+    );
+
+    let jobId = null;
+    let expectedRound = 1;
+
+    for (let loopRound = 1; loopRound <= maxRounds; loopRound += 1) {
+      const response = await this.browser.waitForTeacherResponse(timeout);
+      const packet = parseUpgradePacket(response.text);
+
+      if (jobId && packet.job_id !== jobId) {
+        throw new Error("GPT Teacher смени job_id по време на upgrade loop.");
+      }
+
+      if (packet.round !== expectedRound) {
+        throw new Error(
+          `GPT Teacher върна неочакван round: ${packet.round}; очакван ${expectedRound}.`
+        );
+      }
+
+      jobId = packet.job_id;
+
+      this.sendStatus(
+        packet.summary || `Upgrade round ${packet.round}`,
+        packet.status === "blocked" ? "warning" : "training"
+      );
+
+      if (packet.status === "done") {
+        this.sendStatus("DAVID Upgrade Loop приключи успешно.", "ready");
+        return;
+      }
+
+      if (packet.status === "blocked") {
+        throw new Error(
+          packet.summary || "GPT Teacher блокира upgrade задачата."
+        );
+      }
+
+      const action = packet.actions[0];
+      let result;
+
+      try {
+        result = await this.powershell.run(action, {
+          job_id: packet.job_id,
+          round: packet.round
+        });
+      } catch (error) {
+        result = {
+          ok: false,
+          approved: false,
+          error: error.message,
+          stdout: "",
+          stderr: "",
+          fixed_tests: []
+        };
+      }
+
+      const resultMessage = buildUpgradeResult({
+        packet,
+        action,
+        result
+      });
+
+      await this.browser.sendTeacherMessage(resultMessage);
+      expectedRound += 1;
+
+      if (loopRound === maxRounds) {
+        throw new Error(
+          `DAVID Upgrade Loop достигна лимита от ${maxRounds} кръга.`
         );
       }
     }

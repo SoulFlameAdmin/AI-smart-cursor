@@ -20,6 +20,12 @@ const {
   parseTeacherPacket
 } = require("../core/teacher-sync-protocol.cjs");
 
+const {
+  DAVID_UPGRADE_PROTOCOL,
+  parseUpgradePacket,
+  inspectPowerShellScript
+} = require("../core/upgrade-protocol.cjs");
+
 const root = path.resolve(__dirname, "..");
 const mainSource = fs.readFileSync(
   path.join(root, "main.cjs"),
@@ -31,6 +37,10 @@ const browserAgentSource = fs.readFileSync(
 );
 const actionExecutorSource = fs.readFileSync(
   path.join(root, "core", "action-executor.cjs"),
+  "utf8"
+);
+const powerShellSessionSource = fs.readFileSync(
+  path.join(root, "core", "powershell-session.cjs"),
   "utf8"
 );
 
@@ -171,24 +181,27 @@ assert.ok(
 );
 
 assert.ok(
-  DAVID_UPGRADE_REQUEST_MESSAGE.includes("Supabase"),
-  "Upgrade request does not mention Supabase memory."
+  DAVID_UPGRADE_REQUEST_MESSAGE.includes(DAVID_UPGRADE_PROTOCOL),
+  "Upgrade request does not activate the Upgrade Loop protocol."
 );
 
 assert.ok(
-  DAVID_UPGRADE_REQUEST_MESSAGE.includes(
-    DAVID_TEACHER_SYNC_PROTOCOL
-  ),
-  "Upgrade request does not activate the Teacher Sync protocol."
+  DAVID_UPGRADE_REQUEST_MESSAGE.includes("не променяй main/master"),
+  "Upgrade request does not protect main/master."
+);
+
+assert.ok(
+  DAVID_UPGRADE_REQUEST_MESSAGE.includes("requires_confirmation"),
+  "Upgrade request does not require human confirmation."
 );
 
 assert.ok(
   upgradeSteps.some(
     (step) =>
-      step.action === "browser_teacher_sync" &&
-      step.max_rounds === 3
+      step.action === "browser_upgrade_loop" &&
+      step.max_rounds === 6
   ),
-  "Upgrade bridge does not start the safe Teacher Sync loop."
+  "Upgrade bridge does not start the controlled Upgrade Loop."
 );
 
 const parsedPacket = parseTeacherPacket(`
@@ -220,6 +233,79 @@ assert.throws(
   })),
   /не е разрешено/iu,
   "Teacher Sync accepted an unsafe action."
+);
+
+const upgradePacket = parseUpgradePacket(JSON.stringify({
+  protocol: DAVID_UPGRADE_PROTOCOL,
+  job_id: "upgrade-test-001",
+  round: 1,
+  status: "action",
+  summary: "Run safe local checks",
+  actions: [
+    {
+      action: "run_powershell_upgrade",
+      action_id: "upgrade-test-001-action-1",
+      branch: "candidate/david-upgrade-test-001",
+      requires_confirmation: true,
+      timeout_ms: 120000,
+      expected_tests: [
+        "npm test",
+        "node tests/baseline-tests.cjs"
+      ],
+      script: [
+        '$ErrorActionPreference = "Stop"',
+        'git status --short',
+        'node --check .\\main.cjs'
+      ].join("\n")
+    }
+  ]
+}));
+
+assert.strictEqual(upgradePacket.status, "action");
+assert.strictEqual(upgradePacket.round, 1);
+assert.strictEqual(upgradePacket.actions.length, 1);
+assert.strictEqual(
+  upgradePacket.actions[0].branch,
+  "candidate/david-upgrade-test-001"
+);
+assert.strictEqual(
+  upgradePacket.actions[0].script_sha256.length,
+  64
+);
+
+assert.throws(
+  () => inspectPowerShellScript("git reset --hard HEAD"),
+  /блокиран/iu,
+  "Upgrade protocol accepted git reset --hard."
+);
+
+assert.throws(
+  () => inspectPowerShellScript("gh pr merge 7"),
+  /блокиран/iu,
+  "Upgrade protocol accepted automatic PR merge."
+);
+
+assert.throws(
+  () => parseUpgradePacket(JSON.stringify({
+    protocol: DAVID_UPGRADE_PROTOCOL,
+    job_id: "unsafe-main",
+    round: 1,
+    status: "action",
+    summary: "Unsafe branch",
+    actions: [
+      {
+        action: "run_powershell_upgrade",
+        action_id: "unsafe-main-1",
+        branch: "feature/main",
+        requires_confirmation: true,
+        timeout_ms: 120000,
+        expected_tests: [],
+        script: "git status"
+      }
+    ]
+  })),
+  /main\/master/iu,
+  "Upgrade protocol accepted a main-like branch."
 );
 
 const duplicateCount = (
@@ -259,6 +345,22 @@ assert.ok(
   "DAVID Browser must restore after minimization."
 );
 
+// DAVID_CHATGPT_REDIRECT_LOAD_FIX_TEST
+assert.ok(
+  browserAgentSource.includes("isUsableChatGptPage"),
+  "DAVID Browser does not validate redirected ChatGPT pages."
+);
+
+assert.ok(
+  browserAgentSource.includes("chrome-error://"),
+  "DAVID Browser does not reject Chromium error pages."
+);
+
+assert.ok(
+  browserAgentSource.includes("location.assign"),
+  "DAVID Browser does not retry the Teacher URL after failed navigation."
+);
+
 assert.ok(
   browserAgentSource.includes("waitForTeacherResponse"),
   "DAVID Browser cannot wait for a GPT response."
@@ -274,12 +376,38 @@ assert.ok(
   "DAVID ActionExecutor does not implement the Teacher Sync loop."
 );
 
+assert.ok(
+  actionExecutorSource.includes("runUpgradeLoop"),
+  "DAVID ActionExecutor does not implement the Upgrade Loop."
+);
+
+assert.ok(
+  actionExecutorSource.includes("PowerShellSession"),
+  "DAVID ActionExecutor does not use the controlled PowerShell session."
+);
+
+assert.ok(
+  powerShellSessionSource.includes("backup/david-upgrade-"),
+  "PowerShell session does not create a backup branch."
+);
+
+assert.ok(
+  powerShellSessionSource.includes("git diff --check"),
+  "PowerShell session does not run fixed Git validation."
+);
+
+assert.ok(
+  powerShellSessionSource.includes("redactSecrets"),
+  "PowerShell session does not redact secrets from output."
+);
+
 console.log(
   JSON.stringify({
     status: "PASS",
     teacherUrl: DAVID_TEACHER_CHAT_URL,
     upgradeBridge: "PASS",
     teacherSync: "PASS",
+    upgradeLoop: "PASS",
     duplicateRequestFunctionCount: duplicateCount
   })
 );

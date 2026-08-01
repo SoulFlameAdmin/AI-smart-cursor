@@ -12,6 +12,7 @@ const ALLOWED_ACTIONS = new Set([
   "browser_press_key",
   "browser_mark_teacher_state",
   "browser_teacher_sync",
+  "browser_upgrade_loop",
   "verify_url_contains",
   "system_click",
   "system_type",

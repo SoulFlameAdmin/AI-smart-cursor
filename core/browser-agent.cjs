@@ -111,7 +111,75 @@ class BrowserAgent {
       "working"
     );
 
-    await window.loadURL(target);
+    /* DAVID_CHATGPT_REDIRECT_LOAD_FIX_BEGIN */
+    const navigationErrors = [];
+
+    const getCurrentUrl = () =>
+      String(window.webContents.getURL() || "");
+
+    const isUsableChatGptPage = () => {
+      const current = getCurrentUrl();
+
+      if (!current || current.startsWith("chrome-error://")) {
+        return false;
+      }
+
+      try {
+        const hostname = new URL(current).hostname.toLowerCase();
+
+        return (
+          hostname === "chatgpt.com" ||
+          hostname.endsWith(".chatgpt.com") ||
+          hostname === "openai.com" ||
+          hostname.endsWith(".openai.com")
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    try {
+      await window.loadURL(target);
+    } catch (error) {
+      navigationErrors.push(String(error?.message || error));
+      await sleep(1500);
+
+      // Chromium can report ERR_FAILED/ERR_ABORTED while a redirect or
+      // authentication page has already loaded successfully.
+      if (!isUsableChatGptPage()) {
+        try {
+          await window.loadURL("https://chatgpt.com/");
+          await sleep(1000);
+
+          await window.webContents.executeJavaScript(
+            `location.assign(${JSON.stringify(target)})`,
+            true
+          );
+
+          const retryStarted = Date.now();
+
+          while (Date.now() - retryStarted < 15000) {
+            if (isUsableChatGptPage()) {
+              break;
+            }
+
+            await sleep(250);
+          }
+        } catch (retryError) {
+          navigationErrors.push(
+            String(retryError?.message || retryError)
+          );
+        }
+      }
+    }
+
+    if (!isUsableChatGptPage()) {
+      throw new Error(
+        "DAVID Browser не успя да зареди ChatGPT: " +
+        navigationErrors.join(" | ")
+      );
+    }
+    /* DAVID_CHATGPT_REDIRECT_LOAD_FIX_END */
 
     if (window.isMinimized()) {
       window.restore();

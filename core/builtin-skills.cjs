@@ -4,25 +4,41 @@ const DAVID_TEACHER_CHAT_URL =
   "https://chatgpt.com/c/6a6d7e46-3534-83eb-a42b-c981bad99c84";
 
 const DAVID_UPGRADE_REQUEST_MESSAGE =
-  "Ъпгрейдни ме – DAVID.\n\n" +
-  "Аз съм DAVID Smart Cursor. Провери текущото състояние на " +
-  "GitHub repository SoulFlameAdmin/AI-smart-cursor и стабилния tag " +
-  "david-cursor-v0.1.0-baseline. Създай следващия upgrade само в " +
-  "отделен branch и Pull Request; не променяй main директно. " +
-  "Използвай Supabase като памет за upgrade заявката, плана, " +
-  "тестовете и резултата, когато връзката е настроена. " +
-  "Преди merge пусни локалните тестове и GitHub Actions. " +
-  "При неуспех запази стабилната версия и подготви rollback.\n\n" +
-  "DAVID Teacher Sync 0.1 е активен. Отговори САМО с един JSON " +
-  "обект, без обяснение извън него. Форматът е: " +
-  "{\"protocol\":\"david_teacher_sync_v1\",\"status\":" +
-  "\"action|done|blocked\",\"summary\":\"кратко\",\"actions\":[]}. " +
-  "При status=action използвай само действия wait, system_click, " +
-  "system_type или notify. Не използвай shell, PowerShell, изтриване, " +
-  "пароли, плащания или скрити действия. DAVID ще иска разрешение " +
-  "преди всяко местно кликване или писане. Не отгатвай координати; " +
-  "при недостатъчно визуална информация върни status=blocked. " +
-  "След резултат от DAVID върни следващия JSON пакет.\n\n" +
+  "DAVID Teacher Upgrade Loop 0.3.\n\n" +
+  "Ти си постоянният GPT Teacher за DAVID Smart Cursor. Работиш само " +
+  "по GitHub repository SoulFlameAdmin/AI-smart-cursor и пазиш стабилния " +
+  "tag david-cursor-v0.1.0-baseline. Никога не променяй main/master " +
+  "директно, не мести и не изтривай стабилния tag, не merge-вай PR и " +
+  "не използвай force push. Всеки upgrade е в отделен candidate/feature/fix " +
+  "branch, с backup, тестове, commit, push и Pull Request.\n\n" +
+  "DAVID може да изпълни един контролиран PowerShell script на кръг. " +
+  "Отговори САМО с един JSON обект, без markdown и без текст извън JSON. " +
+  "Protocol: david_upgrade_loop_v1. Първият пакет е round=1 и има постоянен " +
+  "job_id. При следващите пакети увеличавай round с точно 1 и не сменяй " +
+  "job_id.\n\n" +
+  "Action формат:\n" +
+  "{\"protocol\":\"david_upgrade_loop_v1\",\"job_id\":\"кратък-id\"," +
+  "\"round\":1,\"status\":\"action\",\"summary\":\"какво правиш\"," +
+  "\"actions\":[{\"action\":\"run_powershell_upgrade\"," +
+  "\"action_id\":\"уникален-id\",\"branch\":\"candidate/david-...\"," +
+  "\"requires_confirmation\":true,\"timeout_ms\":600000," +
+  "\"expected_tests\":[\"npm test\",\"node tests/baseline-tests.cjs\"]," +
+  "\"script\":\"PowerShell script\"}]}\n\n" +
+  "След резултат от DAVID анализирай целия stdout/stderr. Ако има грешка, " +
+  "върни нов action пакет с минимална поправка. Ако upgrade-ът и тестовете " +
+  "са PASS и working tree е чист, върни:\n" +
+  "{\"protocol\":\"david_upgrade_loop_v1\",\"job_id\":\"същият-id\"," +
+  "\"round\":N,\"status\":\"done\",\"summary\":\"PASS\",\"actions\":[]}\n\n" +
+  "Правила за script: започни с проверки; използвай точни файлови промени; " +
+  "не изтривай рекурсивно; не използвай git reset --hard, git clean, " +
+  "force push, checkout/switch main, gh pr merge, registry, scheduled tasks, " +
+  "services, shutdown, credentials, пароли или произволно изтегляне. " +
+  "Не слагай secrets в кода. Скриптът трябва да е повторяем, да спира при " +
+  "грешка и да показва ясни PASS/FAIL редове. DAVID сам създава backup branch " +
+  "и след скрипта винаги пуска фиксирани npm test, baseline tests и git diff --check.\n\n" +
+  "Преди да дадеш script, провери актуалното състояние на GitHub branch-овете " +
+  "и отворените PR-и. Не приемай, че локалната версия е main. Не предлагай " +
+  "merge, докато локалният тест, GitHub Actions и човешкото одобрение не са PASS.\n\n" +
   "Допълнителна задача от DAVID: {{details}}";
 
 const PROMPT_SELECTOR =
@@ -117,13 +133,13 @@ function createChatGptTeacherSkill() {
 function createUpgradeBridgeSkill() {
   return {
     skill_key: "builtin_david_upgrade_bridge",
-    title: "Поискай upgrade от DAVID GPT Teacher",
+    title: "DAVID Teacher Upgrade Loop",
     description:
-      "Изпраща upgrade заявка и продължава чрез безопасен GPT Teacher Sync цикъл.",
-    version: 2,
+      "Двупосочен контролиран upgrade цикъл: GPT дава PowerShell, DAVID изпълнява, тества и връща целия резултат.",
+    version: 3,
     status: "approved",
     source: "builtin",
-    risk_level: "medium",
+    risk_level: "high",
     matcher: {
       type: "regex",
       pattern:
@@ -142,14 +158,14 @@ function createUpgradeBridgeSkill() {
     steps: [
       ...createTeacherSendSteps(DAVID_UPGRADE_REQUEST_MESSAGE),
       {
-        action: "browser_teacher_sync",
-        max_rounds: 3,
-        timeout_ms: 120000
+        action: "browser_upgrade_loop",
+        max_rounds: 6,
+        timeout_ms: 180000
       },
       {
         action: "notify",
-        title: "DAVID Teacher Sync",
-        text: "Безопасният Teacher Sync цикъл приключи."
+        title: "DAVID Upgrade Loop",
+        text: "Контролираният upgrade цикъл приключи."
       }
     ]
   };
