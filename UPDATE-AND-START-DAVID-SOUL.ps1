@@ -52,18 +52,20 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host '[3/5] Applying the latest tested version...' -ForegroundColor Cyan
 Invoke-Checked $git.Name merge --ff-only origin/feature/david-soul-relay-v1
 
-Write-Host '[4/5] Verifying DAVID...' -ForegroundColor Cyan
+Write-Host '[4/5] Verifying DAVID SOUL...' -ForegroundColor Cyan
 Invoke-Checked $npm.Name test
+Invoke-Checked (Get-Command node -ErrorAction Stop).Name --check soul-main.cjs
 
-Write-Host '[5/5] Starting DAVID Electron SOUL relay...' -ForegroundColor Green
-Write-Host 'SOUL itself does not use PowerShell. This script only updates and starts Electron.' -ForegroundColor DarkGray
+Write-Host '[5/5] Starting dedicated DAVID SOUL-only Electron...' -ForegroundColor Green
+Write-Host 'Teacher режимът няма да бъде стартиран.' -ForegroundColor DarkGray
+Write-Host 'Electron ще отвори точния DAVID_SOUL_CHAT_URL и ще чака SOUL.' -ForegroundColor DarkGray
 
-$startScript = Join-Path $root 'START-DAVID-E-DRIVE.ps1'
+$startScript = Join-Path $root 'START-DAVID-SOUL-ONLY.ps1'
 if (-not (Test-Path -LiteralPath $startScript)) {
   throw "Missing launcher: $startScript"
 }
 
 & $startScript
 if ($LASTEXITCODE -ne 0) {
-  throw "DAVID stopped with exit code $LASTEXITCODE"
+  throw "DAVID SOUL stopped with exit code $LASTEXITCODE"
 }
