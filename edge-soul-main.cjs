@@ -10,9 +10,13 @@ const { EdgeSoulBrowserAgent } = require("./core/edge-cdp-soul-browser.cjs");
 const {
   installPersistentSoulSession
 } = require("./core/edge-soul-persistent-session.cjs");
+const {
+  installReliableSoulSendConfirmation
+} = require("./core/edge-soul-send-confirm-patch.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
 installPersistentSoulSession();
+installReliableSoulSendConfirmation();
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock({ mode: "soul" });
 if (!gotSingleInstanceLock) {
@@ -23,6 +27,8 @@ if (!gotSingleInstanceLock) {
 let relay = null;
 let isQuitting = false;
 let lastStatus = null;
+let lastConsoleStatusSignature = "";
+let lastConsoleStatusAt = 0;
 
 function clean(value, max = 2000) {
   return String(value ?? "").trim().slice(0, max);
@@ -110,7 +116,15 @@ function sendStatus(message, kind = "info", meta = {}) {
   const text = clean(message);
   const normalizedKind = clean(kind, 40) || "info";
   const state = inferState(text, normalizedKind, meta);
-  console.log(`[DAVID SOUL EDGE][${normalizedKind.toUpperCase()}] ${text}`);
+  const signature = `${normalizedKind}\u0000${text}`;
+  const now = Date.now();
+
+  if (signature !== lastConsoleStatusSignature || now - lastConsoleStatusAt > 750) {
+    console.log(`[DAVID SOUL EDGE][${normalizedKind.toUpperCase()}] ${text}`);
+    lastConsoleStatusSignature = signature;
+    lastConsoleStatusAt = now;
+  }
+
   writeStatus(state, text, normalizedKind, meta);
 }
 
