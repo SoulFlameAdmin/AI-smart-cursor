@@ -87,13 +87,13 @@ Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
 Write-Host 'Starting DAVID SOUL relay only.' -ForegroundColor Green
 Write-Host 'Teacher mode will not be loaded.' -ForegroundColor Green
 Write-Host 'Electron will open DAVID_SOUL_CHAT_URL and wait for SOUL messages.' -ForegroundColor Green
+Write-Host 'Normal Chromium GPU rendering is enabled for the ChatGPT window.' -ForegroundColor Green
 Write-Host ''
 
 $electronArgs = @(
   "--user-data-dir=$userDataDir"
   "--disk-cache-dir=$cacheDir"
-  '--disable-gpu'
-  '--disable-gpu-shader-disk-cache'
+  '--ignore-gpu-blocklist'
   '--disable-features=NetworkServiceSandbox'
   'soul-main.cjs'
 )
@@ -123,7 +123,7 @@ if ($process.HasExited) {
 }
 
 Write-Host "DAVID SOUL RUNNING - PID $($process.Id)" -ForegroundColor Green
-Write-Host 'The fixed GPT session should be open and waiting for SOUL.' -ForegroundColor Yellow
+Write-Host 'The fixed GPT session should be visible and waiting for SOUL.' -ForegroundColor Yellow
 Write-Host "Log: $stdoutLog" -ForegroundColor DarkGray
 Write-Host "Errors: $stderrLog" -ForegroundColor DarkGray
 Write-Host ''
