@@ -12,6 +12,9 @@ const ALLOWED_ACTIONS = new Set([
   "browser_press_key",
   "verify_url_contains",
   "teacher_loop",
+  "soul_relay_start",
+  "soul_relay_stop",
+  "soul_relay_status",
   "system_click",
   "system_type",
   "notify"
