@@ -25,17 +25,40 @@ $env:TEMP = $tempDir
 $env:TMP = $tempDir
 $env:ELECTRON_CACHE = $cacheDir
 
+$legacyCachePaths = @(
+  (Join-Path $legacyUserData 'Cache'),
+  (Join-Path $legacyUserData 'Code Cache'),
+  (Join-Path $legacyUserData 'GPUCache'),
+  (Join-Path $legacyUserData 'DawnCache'),
+  (Join-Path $legacyUserData 'GraphiteDawnCache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\Code Cache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\GPUCache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\DawnCache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\Network\Cache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\Service Worker\CacheStorage'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\Shared Dictionary\cache')
+)
+
+foreach ($item in $legacyCachePaths) {
+  if (Test-Path -LiteralPath $item) {
+    Remove-Item -LiteralPath $item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 if (Test-Path -LiteralPath $legacyUserData) {
   Write-Host 'Copying the existing Electron and ChatGPT profile from C: to E: ...' -ForegroundColor Yellow
 
-  & robocopy.exe $legacyUserData $userDataDir /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP
-  $copyCode = $LASTEXITCODE
+  try {
+    Get-ChildItem -LiteralPath $legacyUserData -Force | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination $userDataDir -Recurse -Force
+    }
 
-  if ($copyCode -gt 7) {
-    throw "Robocopy failed with exit code $copyCode"
+    Remove-Item -LiteralPath $legacyUserData -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host 'Profile moved to E:.' -ForegroundColor Green
   }
-
-  Remove-Item -LiteralPath $legacyUserData -Recurse -Force -ErrorAction SilentlyContinue
+  catch {
+    Write-Warning 'The old profile could not be copied completely. DAVID will start with the E: profile and ChatGPT may ask you to sign in again.'
+  }
 }
 
 $cachePaths = @(
