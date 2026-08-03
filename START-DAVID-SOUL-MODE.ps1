@@ -117,7 +117,7 @@ function Test-PortAvailable {
   param([int]$Port)
   $listener = $null
   try {
-    $listener = New-Object System.Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $Port)
+    $listener = [System.Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
     $listener.Start()
     return $true
   } catch {
@@ -242,8 +242,12 @@ function Start-TwinsSite {
     if (Test-Path -LiteralPath $packageFile) {
       $package = Get-Content -LiteralPath $packageFile -Raw -Encoding UTF8 | ConvertFrom-Json
       $scriptName = ''
-      if ($package.scripts.dev) { $scriptName = 'dev' }
-      elseif ($package.scripts.start) { $scriptName = 'start' }
+      $scriptProperties = @()
+      if ($package.PSObject.Properties.Name -contains 'scripts' -and $package.scripts) {
+        $scriptProperties = @($package.scripts.PSObject.Properties.Name)
+      }
+      if ($scriptProperties -contains 'dev') { $scriptName = 'dev' }
+      elseif ($scriptProperties -contains 'start') { $scriptName = 'start' }
 
       if ($scriptName) {
         $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
@@ -325,7 +329,11 @@ if ($ResetEdgeProfile) {
 
 $previousMode = Read-ModeFile
 $previousPort = 0
-if ($previousMode -and $previousMode.debug_address -match ':(\d+)$') {
+if (
+  $previousMode -and
+  $previousMode.PSObject.Properties.Name -contains 'debug_address' -and
+  [string]$previousMode.debug_address -match ':(\d+)$'
+) {
   $previousPort = [int]$Matches[1]
 }
 Stop-PreviousMode -PreviousPort $previousPort
@@ -443,13 +451,17 @@ while ((Get-Date) -lt $deadline) {
 
   $status = Read-SoulStatus
   if ($status) {
-    $startupState = [string]$status.state
-    $startupMessage = [string]$status.message
+    if ($status.PSObject.Properties.Name -contains 'state') {
+      $startupState = [string]$status.state
+    }
+    if ($status.PSObject.Properties.Name -contains 'message') {
+      $startupMessage = [string]$status.message
+    }
     if ($startupState -in @('ready', 'login_required', 'error')) { break }
   }
 }
 
-if ($startupState -eq 'starting' -or $startupState -eq 'working' -or $startupState -eq 'opening_gpt') {
+if ($startupState -in @('starting', 'working', 'opening_gpt', 'gpt_ready')) {
   $startupState = 'working'
   $startupMessage = 'DAVID is still loading Edge/ChatGPT. The live report will continue.'
 }
@@ -459,7 +471,7 @@ $twinsProcess = Start-TwinsSite -Url $TwinsUrl
 
 Write-Host ''
 Write-Host '==================== STARTUP REPORT ====================' -ForegroundColor Cyan
-Write-Host ("Mode             : SOUL for Twins")
+Write-Host 'Mode             : SOUL for Twins'
 Write-Host ("Worker           : PID {0} - {1}" -f $worker.Id, $(if ($worker.HasExited) { 'STOPPED' } else { 'RUNNING' }))
 Write-Host ("GPT state        : {0}" -f $startupState)
 Write-Host ("GPT message      : {0}" -f $startupMessage)
@@ -494,18 +506,25 @@ $lastState = $startupState
 try {
   while ($true) {
     $worker.Refresh()
-    foreach ($line in (Get-NewLogLines -Path $stdoutLog -Offset ([ref]$outOffset))) {
+    $outRef = [ref]$outOffset
+    $errRef = [ref]$errOffset
+    foreach ($line in (Get-NewLogLines -Path $stdoutLog -Offset $outRef)) {
       Write-LiveLine -Line $line
     }
-    foreach ($line in (Get-NewLogLines -Path $stderrLog -Offset ([ref]$errOffset))) {
+    foreach ($line in (Get-NewLogLines -Path $stderrLog -Offset $errRef)) {
       Write-LiveLine -Line $line
     }
 
     $status = Read-SoulStatus
-    if ($status -and [string]$status.state -ne $lastState) {
+    if (
+      $status -and
+      $status.PSObject.Properties.Name -contains 'state' -and
+      [string]$status.state -ne $lastState
+    ) {
       $lastState = [string]$status.state
+      $message = if ($status.PSObject.Properties.Name -contains 'message') { [string]$status.message } else { '' }
       Write-Host ''
-      Write-Host ("[STATE] {0} - {1}" -f $status.state, $status.message) -ForegroundColor Magenta
+      Write-Host ("[STATE] {0} - {1}" -f $lastState, $message) -ForegroundColor Magenta
       Write-Host ''
       Write-ModeFile -DebugPort $debugPort -State $lastState
     }
@@ -522,7 +541,7 @@ try {
 }
 
 $worker.Refresh()
-if ($worker.ExitCode -ne 0) {
+if ($worker.HasExited -and $worker.ExitCode -ne 0) {
   if (Test-Path -LiteralPath $stderrLog) {
     Get-Content -LiteralPath $stderrLog -Tail 120 -Encoding UTF8
   }
