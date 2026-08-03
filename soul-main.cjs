@@ -5,12 +5,18 @@ require("dotenv").config();
 const { app, BrowserWindow, dialog, session } = require("electron");
 const { LiveSoulRelay } = require("./core/soul-relay-live.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
+const { installSoulAuthWindowPatch } = require("./core/soul-auth-window-patch.cjs");
 
 const SOUL_PARTITION = process.env.DAVID_SOUL_PARTITION || "persist:david-soul-v2";
 const CHROME_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Chrome/142.0.0.0 Safari/537.36";
+
+installSoulAuthWindowPatch({
+  partition: SOUL_PARTITION,
+  userAgent: CHROME_USER_AGENT
+});
 
 app.userAgentFallback = CHROME_USER_AGENT;
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
@@ -95,102 +101,102 @@ function sendStatus(message, kind = "info") {
   console.log(`[DAVID SOUL][${label}] ${text}`);
 }
 
-class DavidSoulBrowserWindow extends BrowserWindow {
-  constructor(options = {}) {
-    const webPreferences = {
-      ...(options.webPreferences || {}),
-      partition: SOUL_PARTITION,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      webviewTag: false,
-      backgroundThrottling: false
-    };
+function DavidSoulBrowserWindow(options = {}) {
+  const webPreferences = {
+    ...(options.webPreferences || {}),
+    partition: SOUL_PARTITION,
+    nodeIntegration: false,
+    contextIsolation: true,
+    sandbox: true,
+    webviewTag: false,
+    backgroundThrottling: false
+  };
 
-    super({
-      ...options,
-      show: true,
-      title: "DAVID SOUL",
-      backgroundColor: "#0f1115",
-      webPreferences
-    });
+  const window = new BrowserWindow({
+    ...options,
+    show: true,
+    title: "DAVID SOUL",
+    backgroundColor: "#0f1115",
+    webPreferences
+  });
 
-    this.setMenuBarVisibility(true);
-    this.webContents.setUserAgent(CHROME_USER_AGENT);
-    this.webContents.session.setUserAgent(CHROME_USER_AGENT);
+  window.setMenuBarVisibility(true);
+  window.webContents.setUserAgent(CHROME_USER_AGENT);
+  window.webContents.session.setUserAgent(CHROME_USER_AGENT);
 
-    const wc = this.webContents;
-    const log = (event, details = "") => {
-      console.log(`[DAVID SOUL WINDOW] ${event}${details ? ` | ${details}` : ""}`);
-    };
+  const wc = window.webContents;
+  const log = (event, details = "") => {
+    console.log(`[DAVID SOUL WINDOW] ${event}${details ? ` | ${details}` : ""}`);
+  };
 
-    wc.on("did-start-loading", () => log("did-start-loading", wc.getURL()));
-    wc.on("dom-ready", () => log("dom-ready", wc.getURL()));
-    wc.on("did-finish-load", () => {
-      log("did-finish-load", `${wc.getURL()} | ${wc.getTitle()}`);
-    });
-    wc.on("did-stop-loading", () => log("did-stop-loading", wc.getURL()));
-    wc.on("render-process-gone", (_event, details) => {
-      console.error(
-        `[DAVID SOUL WINDOW] render-process-gone | ${details.reason} | ${details.exitCode}`
-      );
-    });
-    wc.on(
-      "did-fail-load",
-      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-        const currentURL = wc.isDestroyed() ? "" : wc.getURL();
-        const currentTitle = wc.isDestroyed() ? "" : wc.getTitle();
-        console.error(
-          `[DAVID SOUL WINDOW] did-fail-load | code=${errorCode} | ` +
-          `${errorDescription} | main=${isMainFrame} | ${validatedURL} | ` +
-          `current=${currentURL} | title=${currentTitle}`
-        );
-
-        if (!isMainFrame || wc.isDestroyed()) return;
-
-        const chatGptNavigation =
-          isChatGptLocation(validatedURL) ||
-          isChatGptLocation(currentURL) ||
-          /chatgpt/i.test(currentTitle);
-        const redirectOrCancelled = errorCode === -2 || errorCode === -3;
-
-        if (chatGptNavigation && redirectOrCancelled) {
-          log(
-            "soft-navigation-error-ignored",
-            `code=${errorCode} | current=${currentURL} | title=${currentTitle}`
-          );
-          return;
-        }
-
-        const detail = [
-          `Error code: ${errorCode}`,
-          `Description: ${errorDescription}`,
-          `URL: ${validatedURL}`,
-          `Current URL: ${currentURL}`,
-          `Title: ${currentTitle}`,
-          "See .david-system/logs/david-soul-error.log for details."
-        ].join("\n");
-        wc.loadURL(
-          dataPage(
-            "DAVID SOUL could not load ChatGPT",
-            "The relay process is running, but Chromium failed to load the private chat.",
-            detail
-          )
-        ).catch(() => {});
-      }
+  wc.on("did-start-loading", () => log("did-start-loading", wc.getURL()));
+  wc.on("dom-ready", () => log("dom-ready", wc.getURL()));
+  wc.on("did-finish-load", () => {
+    log("did-finish-load", `${wc.getURL()} | ${wc.getTitle()}`);
+  });
+  wc.on("did-stop-loading", () => log("did-stop-loading", wc.getURL()));
+  wc.on("render-process-gone", (_event, details) => {
+    console.error(
+      `[DAVID SOUL WINDOW] render-process-gone | ${details.reason} | ${details.exitCode}`
     );
+  });
+  wc.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const currentURL = wc.isDestroyed() ? "" : wc.getURL();
+      const currentTitle = wc.isDestroyed() ? "" : wc.getTitle();
+      console.error(
+        `[DAVID SOUL WINDOW] did-fail-load | code=${errorCode} | ` +
+        `${errorDescription} | main=${isMainFrame} | ${validatedURL} | ` +
+        `current=${currentURL} | title=${currentTitle}`
+      );
 
-    this.on("unresponsive", () => {
-      console.error("[DAVID SOUL WINDOW] unresponsive");
-    });
+      if (!isMainFrame || wc.isDestroyed()) return;
 
-    wc.loadURL(
-      dataPage(
-        "DAVID SOUL is starting",
-        "Opening the fixed ChatGPT session and connecting to the SOUL queue..."
-      )
-    ).catch(() => {});
-  }
+      const chatGptNavigation =
+        isChatGptLocation(validatedURL) ||
+        isChatGptLocation(currentURL) ||
+        /chatgpt/i.test(currentTitle);
+      const redirectOrCancelled = errorCode === -2 || errorCode === -3;
+
+      if (chatGptNavigation && redirectOrCancelled) {
+        log(
+          "soft-navigation-error-ignored",
+          `code=${errorCode} | current=${currentURL} | title=${currentTitle}`
+        );
+        return;
+      }
+
+      const detail = [
+        `Error code: ${errorCode}`,
+        `Description: ${errorDescription}`,
+        `URL: ${validatedURL}`,
+        `Current URL: ${currentURL}`,
+        `Title: ${currentTitle}`,
+        "See .david-system/logs/david-soul-error.log for details."
+      ].join("\n");
+      wc.loadURL(
+        dataPage(
+          "DAVID SOUL could not load ChatGPT",
+          "The relay process is running, but Chromium failed to load the private chat.",
+          detail
+        )
+      ).catch(() => {});
+    }
+  );
+
+  window.on("unresponsive", () => {
+    console.error("[DAVID SOUL WINDOW] unresponsive");
+  });
+
+  wc.loadURL(
+    dataPage(
+      "DAVID SOUL is starting",
+      "Opening the fixed ChatGPT session and connecting to the SOUL queue..."
+    )
+  ).catch(() => {});
+
+  return window;
 }
 
 async function focusSoulWindow() {
