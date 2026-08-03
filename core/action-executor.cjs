@@ -3,6 +3,7 @@
 const { spawn } = require("child_process");
 const { BrowserAgent, sleep, validateHttpUrl } = require("./browser-agent.cjs");
 const { TeacherLoop } = require("./teacher-loop.cjs");
+const { SoulRelay } = require("./soul-relay.cjs");
 const { clickAt, typeText } = require("./windows-native.cjs");
 const { ALLOWED_ACTIONS } = require("./skill-schema.cjs");
 
@@ -25,6 +26,10 @@ class ActionExecutor {
       browser: this.browser,
       sendStatus,
       confirmAction
+    });
+    this.soulRelay = new SoulRelay({
+      BrowserWindow,
+      sendStatus
     });
   }
 
@@ -129,6 +134,15 @@ class ActionExecutor {
 
       case "teacher_loop":
         return this.teacherLoop.run(step.goal || "");
+
+      case "soul_relay_start":
+        return this.soulRelay.start();
+
+      case "soul_relay_stop":
+        return this.soulRelay.stop();
+
+      case "soul_relay_status":
+        return this.soulRelay.getStatus();
 
       case "system_click":
         await this.executeNativeClick(step);
