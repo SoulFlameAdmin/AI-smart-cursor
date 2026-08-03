@@ -2,6 +2,8 @@
 
 const relay = require("./soul-relay.cjs");
 
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 function pageFindPromptRuntime() {
   const visible = (element) => {
     if (!element || !(element instanceof Element)) return false;
@@ -196,6 +198,25 @@ function pageSnapshotRuntime() {
   };
 }
 
+function isChatGptUrl(value) {
+  try {
+    return new URL(String(value || "")).hostname === "chatgpt.com";
+  } catch {
+    return false;
+  }
+}
+
+function sameConversation(current, target) {
+  try {
+    const currentUrl = new URL(String(current || ""));
+    const targetUrl = new URL(String(target || ""));
+    return currentUrl.hostname === targetUrl.hostname &&
+      currentUrl.pathname.replace(/\/$/, "") === targetUrl.pathname.replace(/\/$/, "");
+  } catch {
+    return false;
+  }
+}
+
 relay.SoulBrowserAgent.prototype.runPage = async function runPage(fn, ...args) {
   const helper = `const pageFindPrompt = ${pageFindPromptRuntime.toString()};`;
   const callArgs = args.map((arg) => JSON.stringify(arg)).join(",");
@@ -207,7 +228,120 @@ relay.SoulBrowserAgent.prototype.getSnapshot = async function getSnapshot() {
   return this.runPage(pageSnapshotRuntime);
 };
 
+relay.SoulBrowserAgent.prototype.openIfNeeded = async function openIfNeeded(url) {
+  const target = relay.validateSoulChatUrl(url);
+  const window = this.ensureWindow();
+  const webContents = window.webContents;
+
+  if (this.visible) {
+    window.show();
+    window.focus();
+  }
+
+  await this.showReport(
+    "opening_chat",
+    "DAVID Electron opens the fixed GPT session.",
+    { target_host: "chatgpt.com" }
+  ).catch(() => {});
+
+  const loadTarget = async () => {
+    if (sameConversation(webContents.getURL(), target)) return true;
+    try {
+      await window.loadURL(target);
+      return true;
+    } catch (error) {
+      await delay(1200);
+      const current = webContents.isDestroyed() ? "" : webContents.getURL();
+      const title = webContents.isDestroyed() ? "" : webContents.getTitle();
+      const softRedirect = isChatGptUrl(current) || /chatgpt/i.test(title);
+      const message = String(error?.message || error || "");
+
+      if (softRedirect && /ERR_FAILED|ERR_ABORTED|\(-2\)|\(-3\)/i.test(message)) {
+        await this.showReport(
+          "chatgpt_redirect",
+          "ChatGPT redirected Electron. DAVID keeps the window open and waits for sign-in.",
+          { current_url: current, title }
+        ).catch(() => {});
+        return false;
+      }
+
+      throw error;
+    }
+  };
+
+  await loadTarget();
+
+  const started = Date.now();
+  const timeoutMs = 10 * 60 * 1000;
+  let lastTargetAttempt = 0;
+  let lastReport = 0;
+
+  while (Date.now() - started < timeoutMs) {
+    if (webContents.isDestroyed()) {
+      throw new Error("DAVID SOUL ChatGPT window was closed.");
+    }
+
+    const current = webContents.getURL();
+    const title = webContents.getTitle();
+    let diagnostics = null;
+
+    if (isChatGptUrl(current)) {
+      diagnostics = await this.diagnose().catch(() => null);
+    }
+
+    const exactConversation = sameConversation(current, target);
+    const promptReady = Number(diagnostics?.promptCount || 0) > 0;
+
+    if (exactConversation && promptReady) {
+      await this.showReport(
+        "prompt_ready",
+        `The fixed ChatGPT conversation is ready. Prompt candidates: ${diagnostics.promptCount}.`,
+        diagnostics,
+        "ready"
+      ).catch(() => {});
+      return window;
+    }
+
+    const now = Date.now();
+    if (promptReady && !exactConversation && now - lastTargetAttempt >= 5000) {
+      lastTargetAttempt = now;
+      await this.showReport(
+        "returning_to_fixed_chat",
+        "ChatGPT is signed in. DAVID is opening the fixed conversation again.",
+        { current_url: current }
+      ).catch(() => {});
+      await loadTarget();
+      await delay(1000);
+      continue;
+    }
+
+    if (now - lastReport >= 2000) {
+      lastReport = now;
+      const elapsedSeconds = Math.round((now - started) / 1000);
+      const manualAuth = /\/auth\/|\/login|\/onboarding|\/welcome/i.test(current) ||
+        /first steps|първи стъпки|log in|sign in/i.test(title);
+      await this.showReport(
+        manualAuth ? "manual_login" : "waiting_chatgpt",
+        manualAuth
+          ? "Sign in to ChatGPT in this Electron window. DAVID will continue automatically."
+          : `DAVID is waiting for the fixed ChatGPT conversation. ${elapsedSeconds} sec.`,
+        { current_url: current, title, elapsed_seconds: elapsedSeconds },
+        manualAuth ? "working" : "working"
+      ).catch(() => {});
+    }
+
+    await delay(500);
+  }
+
+  throw new Error(
+    "DAVID SOUL waited 10 minutes for the fixed ChatGPT conversation. " +
+    "Sign in with the account that owns the private chat and restart DAVID SOUL."
+  );
+};
+
 relay.pageFindPromptRuntime = pageFindPromptRuntime;
 relay.pageSnapshotRuntime = pageSnapshotRuntime;
+relay.isChatGptUrl = isChatGptUrl;
+relay.sameConversation = sameConversation;
 
 module.exports = relay;
