@@ -4,7 +4,7 @@ const {
   SoulRelay,
   buildSoulPrompt,
   normalizeClaimedMessage
-} = require("./soul-relay.cjs");
+} = require("./soul-relay-runtime-v3.cjs");
 
 const LIVE_RELAY_VERSION = "david-soul-relay-v3";
 const HEARTBEAT_MS = 5000;
