@@ -23,6 +23,7 @@ Write-Host ''
 
 $git = Get-Command git -ErrorAction Stop
 $npm = Get-Command npm -ErrorAction Stop
+$node = Get-Command node -ErrorAction Stop
 
 if (-not (Test-Path -LiteralPath (Join-Path $root '.git'))) {
   throw 'This script must be run from the DAVID Git repository.'
@@ -35,7 +36,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($trackedChanges) {
   Write-Host '[STOP] DAVID has local tracked changes.' -ForegroundColor Yellow
-  Write-Host 'Commit or restore them before updating, so nothing is lost.' -ForegroundColor Yellow
+  Write-Host 'Commit or restore them before updating so nothing is lost.' -ForegroundColor Yellow
   & $git.Name status --short
   throw 'Local tracked changes detected.'
 }
@@ -54,11 +55,11 @@ Invoke-Checked $git.Name merge --ff-only origin/feature/david-soul-relay-v1
 
 Write-Host '[4/5] Verifying DAVID SOUL...' -ForegroundColor Cyan
 Invoke-Checked $npm.Name test
-Invoke-Checked (Get-Command node -ErrorAction Stop).Name --check soul-main.cjs
+Invoke-Checked $node.Name --check soul-main.cjs
 
 Write-Host '[5/5] Starting dedicated DAVID SOUL-only Electron...' -ForegroundColor Green
-Write-Host 'Teacher режимът няма да бъде стартиран.' -ForegroundColor DarkGray
-Write-Host 'Electron ще отвори точния DAVID_SOUL_CHAT_URL и ще чака SOUL.' -ForegroundColor DarkGray
+Write-Host 'Teacher mode will not be started.' -ForegroundColor DarkGray
+Write-Host 'Electron will open DAVID_SOUL_CHAT_URL and wait for SOUL.' -ForegroundColor DarkGray
 
 $startScript = Join-Path $root 'START-DAVID-SOUL-ONLY.ps1'
 if (-not (Test-Path -LiteralPath $startScript)) {
