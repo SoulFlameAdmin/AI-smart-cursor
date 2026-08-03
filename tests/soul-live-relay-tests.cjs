@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
 const {
   HEARTBEAT_MS,
   LIVE_RELAY_VERSION,
@@ -20,6 +22,8 @@ const {
 } = require("../core/soul-auth-window-patch.cjs");
 const {
   EdgeSoulBrowserAgent,
+  buildChatGptLoginUrl,
+  isChatGptUrl: isEdgeChatGptUrl,
   normalizeUrl,
   sameConversation: sameEdgeConversation
 } = require("../core/edge-cdp-soul-browser.cjs");
@@ -90,7 +94,37 @@ assert.strictEqual(
   sameEdgeConversation("https://chatgpt.com/c/abc", "https://chatgpt.com/c/xyz"),
   false
 );
-assert.match(EdgeSoulBrowserAgent.prototype.openIfNeeded.toString(), /Microsoft Edge/u);
+assert.strictEqual(isEdgeChatGptUrl("https://chatgpt.com/auth/login"), true);
+assert.strictEqual(isEdgeChatGptUrl("https://example.com/auth/login"), false);
+assert.strictEqual(
+  buildChatGptLoginUrl("https://chatgpt.com/c/abc?model=test"),
+  "https://chatgpt.com/auth/login?next=%2Fc%2Fabc%3Fmodel%3Dtest"
+);
+assert.match(EdgeSoulBrowserAgent.prototype.openIfNeeded.toString(), /opening_login/u);
+assert.match(EdgeSoulBrowserAgent.prototype.openIfNeeded.toString(), /login_required/u);
 assert.match(EdgeSoulBrowserAgent.prototype.sendAndWait.toString(), /waitForAnswer/u);
+assert.match(EdgeSoulBrowserAgent.prototype.startEdge.toString(), /remote-debugging-address=127\.0\.0\.1/u);
 
-console.log("DAVID live Soul relay v3 Edge authentication and answer detection tests: PASS");
+const root = path.join(__dirname, "..");
+const edgeMainSource = fs.readFileSync(path.join(root, "edge-soul-main.cjs"), "utf8");
+const gptReadyIndex = edgeMainSource.indexOf("await relay.browser.openIfNeeded(chatUrl)");
+const queueStartIndex = edgeMainSource.indexOf("await relay.start()");
+assert.ok(gptReadyIndex >= 0, "edge-soul-main must prepare GPT");
+assert.ok(queueStartIndex > gptReadyIndex, "Twins queue must start only after GPT is ready");
+assert.match(edgeMainSource, /requestSingleInstanceLock/u);
+assert.match(edgeMainSource, /soul-status\.json/u);
+
+const launcherPath = path.join(root, "START-DAVID-SOUL-MODE.ps1");
+const launcherBuffer = fs.readFileSync(launcherPath);
+const launcherSource = launcherBuffer.toString("ascii");
+assert.ok(
+  [...launcherBuffer].every((byte) => byte < 128),
+  "The PowerShell launcher must remain ASCII for Windows PowerShell 5.1"
+);
+assert.match(launcherSource, /GIT_TERMINAL_PROMPT = '0'/u);
+assert.match(launcherSource, /127\.0\.0\.1/u);
+assert.match(launcherSource, /SOUL text is never executed as PowerShell/u);
+assert.match(launcherSource, /edge-soul-main\.cjs/u);
+assert.match(launcherSource, /DAVID_TWINS_SOUL_URL/u);
+
+console.log("DAVID SOUL mode security, Edge login and Twins handoff tests: PASS");
