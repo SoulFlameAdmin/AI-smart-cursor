@@ -2,28 +2,57 @@
 
 require("dotenv").config();
 
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, session } = require("electron");
 const { LiveSoulRelay } = require("./core/soul-relay-live.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
-// The dedicated SOUL window needs normal Chromium GPU rendering.
-// The Smart Cursor overlay uses software rendering, but ChatGPT can render black
-// when GPU is disabled inside this separate BrowserWindow process.
+const SOUL_PARTITION = process.env.DAVID_SOUL_PARTITION || "persist:david-soul-v2";
+const CHROME_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+  "AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/142.0.0.0 Safari/537.36";
+
+app.userAgentFallback = CHROME_USER_AGENT;
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 
 const singleInstance = app.requestSingleInstanceLock();
-if (!singleInstance) {
-  app.quit();
-}
+if (!singleInstance) app.quit();
 
 let relay = null;
 let isQuitting = false;
 
 function clean(value, max = 1000) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function htmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function dataPage(title, message, detail = "") {
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>${htmlEscape(title)}</title>
+<style>
+  html,body{height:100%;margin:0;background:#0f1115;color:#f5f7fb;font-family:Segoe UI,Arial,sans-serif}
+  main{min-height:100%;display:grid;place-items:center;padding:32px;box-sizing:border-box}
+  section{max-width:760px;width:100%;border:1px solid #303744;border-radius:18px;padding:24px;background:#171b22;box-shadow:0 22px 70px rgba(0,0,0,.38)}
+  h1{font-size:22px;margin:0 0 12px}p{font-size:15px;line-height:1.55;margin:8px 0;color:#d8deea}
+  pre{white-space:pre-wrap;word-break:break-word;background:#0d1015;border-radius:12px;padding:14px;color:#b9c4d8}
+  .pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ade80;margin-right:9px;animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.25}}
+</style></head><body><main><section>
+<h1><span class="pulse"></span>${htmlEscape(title)}</h1>
+<p>${htmlEscape(message)}</p>${detail ? `<pre>${htmlEscape(detail)}</pre>` : ""}
+</section></main></body></html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
 function requireSoulConfig() {
@@ -33,19 +62,15 @@ function requireSoulConfig() {
 
   if (!chatUrl || /PASTE|private-chat-id|<.+>/i.test(chatUrl)) {
     throw new Error(
-      "Липсва реалният DAVID_SOUL_CHAT_URL в локалния .env файл. " +
-      "Трябва да е частен адрес от вида https://chatgpt.com/c/..."
+      "DAVID_SOUL_CHAT_URL is missing from the local .env file. " +
+      "Use a private URL such as https://chatgpt.com/c/..."
     );
   }
 
   validateSoulChatUrl(chatUrl);
-
-  if (!supabaseUrl) {
-    throw new Error("Липсва SUPABASE_URL в локалния .env файл.");
-  }
-
+  if (!supabaseUrl) throw new Error("SUPABASE_URL is missing from the local .env file.");
   if (!deviceToken || deviceToken.length < 32) {
-    throw new Error("Липсва валиден DAVID_DEVICE_TOKEN в локалния .env файл.");
+    throw new Error("DAVID_DEVICE_TOKEN is missing or invalid in the local .env file.");
   }
 
   process.env.DAVID_DEVICE_BRIDGE_FUNCTION =
@@ -62,6 +87,84 @@ function sendStatus(message, kind = "info") {
   console.log(`[DAVID SOUL][${label}] ${text}`);
 }
 
+class DavidSoulBrowserWindow extends BrowserWindow {
+  constructor(options = {}) {
+    const webPreferences = {
+      ...(options.webPreferences || {}),
+      partition: SOUL_PARTITION,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webviewTag: false,
+      backgroundThrottling: false
+    };
+
+    super({
+      ...options,
+      show: true,
+      title: "DAVID SOUL",
+      backgroundColor: "#0f1115",
+      webPreferences
+    });
+
+    this.setMenuBarVisibility(true);
+    this.webContents.setUserAgent(CHROME_USER_AGENT);
+    this.webContents.session.setUserAgent(CHROME_USER_AGENT);
+
+    const wc = this.webContents;
+    const log = (event, details = "") => {
+      console.log(`[DAVID SOUL WINDOW] ${event}${details ? ` | ${details}` : ""}`);
+    };
+
+    wc.on("did-start-loading", () => log("did-start-loading", wc.getURL()));
+    wc.on("dom-ready", () => log("dom-ready", wc.getURL()));
+    wc.on("did-finish-load", () => {
+      log("did-finish-load", `${wc.getURL()} | ${wc.getTitle()}`);
+    });
+    wc.on("did-stop-loading", () => log("did-stop-loading", wc.getURL()));
+    wc.on("render-process-gone", (_event, details) => {
+      console.error(
+        `[DAVID SOUL WINDOW] render-process-gone | ${details.reason} | ${details.exitCode}`
+      );
+    });
+    wc.on(
+      "did-fail-load",
+      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        console.error(
+          `[DAVID SOUL WINDOW] did-fail-load | code=${errorCode} | ` +
+          `${errorDescription} | main=${isMainFrame} | ${validatedURL}`
+        );
+
+        if (!isMainFrame || errorCode === -3 || wc.isDestroyed()) return;
+        const detail = [
+          `Error code: ${errorCode}`,
+          `Description: ${errorDescription}`,
+          `URL: ${validatedURL}`,
+          "See .david-system/logs/david-soul-error.log for details."
+        ].join("\n");
+        wc.loadURL(
+          dataPage(
+            "DAVID SOUL could not load ChatGPT",
+            "The relay process is running, but Chromium failed to load the private chat.",
+            detail
+          )
+        ).catch(() => {});
+      }
+    );
+
+    this.on("unresponsive", () => {
+      console.error("[DAVID SOUL WINDOW] unresponsive");
+    });
+
+    wc.loadURL(
+      dataPage(
+        "DAVID SOUL is starting",
+        "Opening the fixed ChatGPT session and connecting to the SOUL queue..."
+      )
+    ).catch(() => {});
+  }
+}
+
 async function focusSoulWindow() {
   const window = relay?.browser?.window;
   if (!window || window.isDestroyed()) return false;
@@ -73,22 +176,35 @@ async function focusSoulWindow() {
 async function bootSoulOnly() {
   const { chatUrl } = requireSoulConfig();
 
+  const soulSession = session.fromPartition(SOUL_PARTITION, { cache: true });
+  soulSession.setUserAgent(CHROME_USER_AGENT);
+  await soulSession.clearCache().catch(() => {});
+
   relay = new LiveSoulRelay({
-    BrowserWindow,
+    BrowserWindow: DavidSoulBrowserWindow,
     sendStatus
   });
 
   await relay.start();
-  await relay.browser.openIfNeeded(chatUrl);
+
+  const openTimeout = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("ChatGPT load timed out after 45 seconds.")), 45000);
+  });
+
+  await Promise.race([
+    relay.browser.openIfNeeded(chatUrl),
+    openTimeout
+  ]);
+
   await relay.browser.showReport(
     "waiting",
-    "DAVID Electron е в точната GPT сесия и чака въпрос от Soul.",
-    { route: "Soul → DAVID Electron → GPT → Soul" },
+    "DAVID Electron is in the fixed GPT session and is waiting for SOUL.",
+    { route: "Soul -> DAVID Electron -> GPT -> Soul" },
     "ready"
   ).catch(() => {});
 
   sendStatus(
-    "Точната GPT сесия е отворена. DAVID чака съобщения от Soul.",
+    "The fixed GPT session is open. DAVID is waiting for SOUL messages.",
     "ready"
   );
 }
@@ -98,7 +214,7 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => {
-  // SOUL worker remains active. The window is recreated on the next message.
+  // Keep the SOUL worker alive. The window can be recreated for a new message.
 });
 
 app.on("before-quit", () => {
@@ -107,11 +223,11 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(bootSoulOnly).catch((error) => {
-  const message = clean(error?.message || error, 4000) || "DAVID SOUL не успя да стартира.";
+  const message = clean(error?.message || error, 4000) || "DAVID SOUL failed to start.";
   console.error("DAVID SOUL startup failed:", error);
   dialog.showErrorBox(
-    "DAVID SOUL не стартира",
-    `${message}\n\nПровери локалния .env файл. Teacher режимът не е стартиран.`
+    "DAVID SOUL did not start",
+    `${message}\n\nTeacher mode was not started. Check david-soul-error.log.`
   );
   if (!isQuitting) app.exit(1);
 });
