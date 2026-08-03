@@ -83,10 +83,13 @@ Write-Host "Cache:     $cacheDir" -ForegroundColor Green
 Write-Host "Temp:      $tempDir" -ForegroundColor Green
 Write-Host 'Starting DAVID. Keep this PowerShell window open.' -ForegroundColor Green
 
-& $electronExe \
-  "--user-data-dir=$userDataDir" \
-  "--disk-cache-dir=$cacheDir" \
-  '--disable-gpu-shader-disk-cache' \
+$electronArgs = @(
+  "--user-data-dir=$userDataDir"
+  "--disk-cache-dir=$cacheDir"
+  '--disable-gpu-shader-disk-cache'
   '.'
+)
+
+& $electronExe $electronArgs
 
 exit $LASTEXITCODE
