@@ -113,6 +113,19 @@ assert.ok(gptReadyIndex >= 0, "edge-soul-main must prepare GPT");
 assert.ok(queueStartIndex > gptReadyIndex, "Twins queue must start only after GPT is ready");
 assert.match(edgeMainSource, /requestSingleInstanceLock/u);
 assert.match(edgeMainSource, /soul-status\.json/u);
+assert.match(edgeMainSource, /installPersistentSoulSession/u);
+
+const persistentSource = fs.readFileSync(
+  path.join(root, "core", "edge-soul-persistent-session.cjs"),
+  "utf8"
+);
+assert.match(persistentSource, /--profile-directory=Default/u);
+assert.match(persistentSource, /--disable-guest-mode/u);
+assert.match(persistentSource, /only-explicit-signout/u);
+assert.match(persistentSource, /sameConversation\(current, target\)/u);
+assert.match(persistentSource, /fixed SOUL conversation/u);
+assert.match(persistentSource, /A slow\/blank ChatGPT render is not treated as logout/u);
+assert.doesNotMatch(persistentSource, /bodyLength[^\n]*<\s*80/u);
 
 const launcherPath = path.join(root, "START-DAVID-SOUL-MODE.ps1");
 const launcherBuffer = fs.readFileSync(launcherPath);
@@ -127,4 +140,12 @@ assert.match(launcherSource, /SOUL text is never executed as PowerShell/u);
 assert.match(launcherSource, /edge-soul-main\.cjs/u);
 assert.match(launcherSource, /DAVID_TWINS_SOUL_URL/u);
 
-console.log("DAVID SOUL mode security, Edge login and Twins handoff tests: PASS");
+const stopSource = fs.readFileSync(
+  path.join(root, "STOP-DAVID-SOUL-MODE.ps1"),
+  "utf8"
+);
+assert.match(stopSource, /json\/close/u);
+assert.match(stopSource, /flush the persistent ChatGPT cookies/u);
+assert.match(stopSource, /login_profile = 'preserved'/u);
+
+console.log("DAVID SOUL mode saved-login, fixed-chat and Twins handoff tests: PASS");
