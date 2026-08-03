@@ -6,7 +6,10 @@ const { app, BrowserWindow, dialog } = require("electron");
 const { LiveSoulRelay } = require("./core/soul-relay-live.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
-app.disableHardwareAcceleration();
+// The dedicated SOUL window needs normal Chromium GPU rendering.
+// The Smart Cursor overlay uses software rendering, but ChatGPT can render black
+// when GPU is disabled inside this separate BrowserWindow process.
+app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
@@ -95,7 +98,7 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => {
-  // SOUL worker остава активен. При ново съобщение прозорецът се отваря отново.
+  // SOUL worker remains active. The window is recreated on the next message.
 });
 
 app.on("before-quit", () => {
