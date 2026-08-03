@@ -7,7 +7,12 @@ const path = require("path");
 const { app, BrowserWindow, dialog } = require("electron");
 const { LiveSoulRelay } = require("./core/soul-relay-live.cjs");
 const { EdgeSoulBrowserAgent } = require("./core/edge-cdp-soul-browser.cjs");
+const {
+  installPersistentSoulSession
+} = require("./core/edge-soul-persistent-session.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
+
+installPersistentSoulSession();
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock({ mode: "soul" });
 if (!gotSingleInstanceLock) {
@@ -87,7 +92,12 @@ function inferState(message, kind, meta = {}) {
   if (text.includes("login_required") || text.includes("log in to chatgpt")) {
     return "login_required";
   }
-  if (text.includes("prompt_ready") || text.includes("fixed chatgpt session is open")) {
+  if (
+    text.includes("prompt_ready") ||
+    text.includes("saved_login_ready") ||
+    text.includes("fixed soul conversation is ready") ||
+    text.includes("fixed chatgpt session is open")
+  ) {
     return "gpt_ready";
   }
   if (text.includes("waiting for soul") || text.includes("soul mode is active")) {
@@ -124,9 +134,9 @@ async function boot() {
 
   writeStatus(
     "opening_gpt",
-    "DAVID is opening the fixed GPT session before accepting SOUL messages.",
+    "DAVID is loading the saved ChatGPT login and the one fixed SOUL session.",
     "working",
-    { stage: "opening_gpt" }
+    { stage: "loading_saved_login" }
   );
 
   // Critical ordering: do not claim a message from Twins until GPT is ready.
@@ -134,7 +144,7 @@ async function boot() {
 
   writeStatus(
     "gpt_ready",
-    "The fixed GPT session is ready. DAVID is now activating the Twins SOUL queue.",
+    "The saved ChatGPT login and fixed GPT session are ready. DAVID is now activating the Twins SOUL queue.",
     "ready",
     { stage: "gpt_ready" }
   );
@@ -160,7 +170,7 @@ app.on("before-quit", () => {
   isQuitting = true;
   writeStatus(
     "stopping",
-    "DAVID SOUL mode is stopping.",
+    "DAVID SOUL mode is stopping. The saved Edge login profile is kept.",
     "warning",
     { stage: "stopping" }
   );
