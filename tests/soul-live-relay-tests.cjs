@@ -18,6 +18,11 @@ const {
   installSoulAuthWindowPatch,
   isAllowedSoulAuthUrl
 } = require("../core/soul-auth-window-patch.cjs");
+const {
+  EdgeSoulBrowserAgent,
+  normalizeUrl,
+  sameConversation: sameEdgeConversation
+} = require("../core/edge-cdp-soul-browser.cjs");
 
 assert.strictEqual(LIVE_RELAY_VERSION, "david-soul-relay-v3");
 assert.strictEqual(HEARTBEAT_MS, 5000);
@@ -69,4 +74,23 @@ assert.strictEqual(isAllowedSoulAuthUrl("https://appleid.apple.com/auth/authoriz
 assert.strictEqual(isAllowedSoulAuthUrl("http://accounts.google.com/login"), false);
 assert.strictEqual(isAllowedSoulAuthUrl("https://evil.example/login"), false);
 
-console.log("DAVID live Soul relay v3 authentication and answer detection tests: PASS");
+assert.strictEqual(typeof EdgeSoulBrowserAgent, "function");
+assert.strictEqual(
+  normalizeUrl("https://chatgpt.com/c/abc/?model=test#section"),
+  "https://chatgpt.com/c/abc/?model=test"
+);
+assert.strictEqual(
+  sameEdgeConversation(
+    "https://chatgpt.com/c/abc?model=test",
+    "https://chatgpt.com/c/abc"
+  ),
+  true
+);
+assert.strictEqual(
+  sameEdgeConversation("https://chatgpt.com/c/abc", "https://chatgpt.com/c/xyz"),
+  false
+);
+assert.match(EdgeSoulBrowserAgent.prototype.openIfNeeded.toString(), /Microsoft Edge/u);
+assert.match(EdgeSoulBrowserAgent.prototype.sendAndWait.toString(), /waitForAnswer/u);
+
+console.log("DAVID live Soul relay v3 Edge authentication and answer detection tests: PASS");
