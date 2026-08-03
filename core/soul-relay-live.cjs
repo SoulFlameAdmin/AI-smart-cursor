@@ -6,7 +6,7 @@ const {
   normalizeClaimedMessage
 } = require("./soul-relay.cjs");
 
-const LIVE_RELAY_VERSION = "david-soul-relay-v2";
+const LIVE_RELAY_VERSION = "david-soul-relay-v3";
 const HEARTBEAT_MS = 5000;
 
 const LIVE_STAGES = Object.freeze({
@@ -76,7 +76,7 @@ class LiveSoulRelay extends SoulRelay {
   }
 
   async start() {
-    const status = await super.start();
+    await super.start();
     this.sendStatus(
       "DAVID Electron е постоянно свързан със Soul · чакам въпроси",
       "ready"
@@ -92,7 +92,9 @@ class LiveSoulRelay extends SoulRelay {
 
   async report(job, stage, message = progressLabel(stage), details = {}) {
     this.currentStage = stage;
-    this.sendStatus(message, progressKind(stage));
+    const kind = progressKind(stage);
+    this.sendStatus(message, kind);
+    await this.browser.showReport(stage, message, details, kind).catch(() => {});
 
     if (!job?.id) return { ok: true, local_only: true };
 
@@ -110,21 +112,16 @@ class LiveSoulRelay extends SoulRelay {
         }
       });
     } catch (error) {
-      this.sendStatus(
-        `Soul отчетът не се обнови: ${error.message}`,
-        "warning"
-      );
+      this.sendStatus(`Soul отчетът не се обнови: ${error.message}`, "warning");
       return { ok: false, error: error.message };
     }
   }
 
   startHeartbeat(job, startedAt) {
     this.stopHeartbeat();
-
     this.heartbeatTimer = setInterval(async () => {
       if (this.heartbeatBusy || !this.active || !this.busy) return;
       this.heartbeatBusy = true;
-
       try {
         const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000);
         await this.report(
@@ -163,38 +160,25 @@ class LiveSoulRelay extends SoulRelay {
         return;
       }
 
-      if (
-        this.config.userId &&
-        job.userId &&
-        job.userId !== this.config.userId
-      ) {
+      if (this.config.userId && job.userId && job.userId !== this.config.userId) {
         throw new Error("Получено е съобщение от различен SOUL потребител.");
       }
 
       this.currentMessageId = job.id;
 
-      await this.report(
-        job,
-        LIVE_STAGES.RECEIVED,
-        progressLabel(LIVE_STAGES.RECEIVED),
-        { prompt_chars: job.text.length }
-      );
+      await this.report(job, LIVE_STAGES.RECEIVED, progressLabel(LIVE_STAGES.RECEIVED), {
+        prompt_chars: job.text.length
+      });
 
       const prompt = buildSoulPrompt(job, this.config.maxMessageChars);
 
-      await this.report(
-        job,
-        LIVE_STAGES.OPENING_CHAT,
-        progressLabel(LIVE_STAGES.OPENING_CHAT),
-        { chat_host: "chatgpt.com" }
-      );
+      await this.report(job, LIVE_STAGES.OPENING_CHAT, progressLabel(LIVE_STAGES.OPENING_CHAT), {
+        chat_host: "chatgpt.com"
+      });
 
-      await this.report(
-        job,
-        LIVE_STAGES.SENDING_TO_GPT,
-        progressLabel(LIVE_STAGES.SENDING_TO_GPT),
-        { prompt_chars: prompt.length }
-      );
+      await this.report(job, LIVE_STAGES.SENDING_TO_GPT, progressLabel(LIVE_STAGES.SENDING_TO_GPT), {
+        prompt_chars: prompt.length
+      });
 
       this.startHeartbeat(job, startedAt);
 
@@ -206,19 +190,13 @@ class LiveSoulRelay extends SoulRelay {
 
       this.stopHeartbeat();
 
-      await this.report(
-        job,
-        LIVE_STAGES.READING_ANSWER,
-        progressLabel(LIVE_STAGES.READING_ANSWER),
-        { answer_chars: answer.length }
-      );
+      await this.report(job, LIVE_STAGES.READING_ANSWER, progressLabel(LIVE_STAGES.READING_ANSWER), {
+        answer_chars: answer.length
+      });
 
-      await this.report(
-        job,
-        LIVE_STAGES.RETURNING_TO_SOUL,
-        progressLabel(LIVE_STAGES.RETURNING_TO_SOUL),
-        { answer_chars: answer.length }
-      );
+      await this.report(job, LIVE_STAGES.RETURNING_TO_SOUL, progressLabel(LIVE_STAGES.RETURNING_TO_SOUL), {
+        answer_chars: answer.length
+      });
 
       await this.bridge.request("complete_soul_message", {
         message_id: job.id,
@@ -229,6 +207,15 @@ class LiveSoulRelay extends SoulRelay {
       });
 
       this.currentStage = LIVE_STAGES.COMPLETED;
+      await this.browser.showReport(
+        LIVE_STAGES.COMPLETED,
+        progressLabel(LIVE_STAGES.COMPLETED),
+        {
+          answer_chars: answer.length,
+          elapsed_seconds: Math.round((Date.now() - startedAt) / 1000)
+        },
+        "ready"
+      ).catch(() => {});
 
       await this.bridge.logEvent("soul_message_completed", {
         message_id: job.id,
@@ -242,6 +229,8 @@ class LiveSoulRelay extends SoulRelay {
     } catch (error) {
       this.stopHeartbeat();
       this.currentStage = LIVE_STAGES.FAILED;
+      const errorText = String(error.message || error).slice(0, 1000);
+      await this.browser.showReport(LIVE_STAGES.FAILED, errorText, {}, "error").catch(() => {});
 
       if (job?.id) {
         try {
@@ -249,11 +238,9 @@ class LiveSoulRelay extends SoulRelay {
             message_id: job.id,
             user_id: job.userId || this.config.userId || null,
             worker: LIVE_RELAY_VERSION,
-            error: String(error.message || error).slice(0, 1000)
+            error: errorText
           });
-        } catch {
-          // Lease recovery keeps the queued turn recoverable after a transient bridge error.
-        }
+        } catch {}
       }
 
       throw error;
