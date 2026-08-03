@@ -6,8 +6,9 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
+    "start:soul": "electron soul-main.cjs",
     "dev": "cross-env DAVID_DEV=1 electron .",
-    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs",
+    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs && node --check soul-main.cjs",
     "dist:win": "electron-builder --win nsis",
     "pack:win": "electron-builder --win dir"
   },
@@ -26,6 +27,7 @@
     "asar": true,
     "files": [
       "main.cjs",
+      "soul-main.cjs",
       "preload.cjs",
       "core/**/*",
       "renderer/**/*",
