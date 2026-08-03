@@ -20,5 +20,6 @@ assert.match(progressLabel(LIVE_STAGES.COMPLETED), /завършен/u);
 assert.strictEqual(typeof SoulBrowserAgent.prototype.showReport, "function");
 assert.strictEqual(typeof SoulBrowserAgent.prototype.diagnose, "function");
 assert.strictEqual(typeof SoulBrowserAgent.prototype.runPage, "function");
+assert.match(SoulBrowserAgent.prototype.runPage.toString(), /pageFindPrompt/u);
 
-console.log("DAVID live Soul relay v3 tests: PASS");
+console.log("DAVID live Soul relay v3 real HUD tests: PASS");
