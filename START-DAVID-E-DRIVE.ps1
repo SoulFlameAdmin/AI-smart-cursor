@@ -1,93 +1,92 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $root
+Set-Location -LiteralPath $root
 
-$storageRoot = Join-Path $root ".david-system"
-$userDataDir = Join-Path $storageRoot "electron-user-data"
-$cacheDir = Join-Path $storageRoot "electron-cache"
-$legacyUserData = Join-Path $env:APPDATA "david-smart-cursor-v1"
-$electronExe = Join-Path $root "node_modules\electron\dist\electron.exe"
+$storageRoot = Join-Path $root '.david-system'
+$userDataDir = Join-Path $storageRoot 'electron-user-data'
+$cacheDir = Join-Path $storageRoot 'electron-cache'
+$tempDir = Join-Path $storageRoot 'temp'
+$legacyUserData = Join-Path $env:APPDATA 'david-smart-cursor-v1'
+$electronExe = Join-Path $root 'node_modules\electron\dist\electron.exe'
 
-Write-Host "DAVID E-DRIVE STORAGE: $storageRoot" -ForegroundColor Cyan
+Write-Host 'DAVID E-DRIVE START' -ForegroundColor Cyan
+Write-Host $storageRoot -ForegroundColor Cyan
 
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-  Where-Object {
-    $_.Name -in @("electron.exe", "node.exe") -and
-    $_.ExecutablePath -and
-    $_.ExecutablePath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
-  } |
-  ForEach-Object {
-    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+Get-Process electron -ErrorAction SilentlyContinue |
+  Stop-Process -Force -ErrorAction SilentlyContinue
+
+New-Item -ItemType Directory -Force -Path $storageRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
+New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+
+$env:TEMP = $tempDir
+$env:TMP = $tempDir
+$env:ELECTRON_CACHE = $cacheDir
+
+if (Test-Path -LiteralPath $legacyUserData) {
+  Write-Host 'Copying the existing Electron and ChatGPT profile from C: to E: ...' -ForegroundColor Yellow
+
+  & robocopy.exe $legacyUserData $userDataDir /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP
+  $copyCode = $LASTEXITCODE
+
+  if ($copyCode -gt 7) {
+    throw "Robocopy failed with exit code $copyCode"
   }
 
-New-Item -ItemType Directory -Force -Path $storageRoot, $userDataDir, $cacheDir | Out-Null
-
-if (Test-Path $legacyUserData) {
-  $legacyFull = [System.IO.Path]::GetFullPath($legacyUserData).TrimEnd("\")
-  $targetFull = [System.IO.Path]::GetFullPath($userDataDir).TrimEnd("\")
-
-  if ($legacyFull -ne $targetFull) {
-    Write-Host "Премествам Electron профила от C: към E: без да трия входа в ChatGPT..." -ForegroundColor Yellow
-
-    & robocopy $legacyUserData $userDataDir /E /MOVE /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP
-    $robocopyCode = $LASTEXITCODE
-
-    if ($robocopyCode -gt 7) {
-      throw "Преместването на Electron профила се провали. Robocopy exit code: $robocopyCode"
-    }
-
-    if (Test-Path $legacyUserData) {
-      Remove-Item $legacyUserData -Recurse -Force -ErrorAction SilentlyContinue
-    }
-  }
+  Remove-Item -LiteralPath $legacyUserData -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $cachePaths = @(
-  (Join-Path $userDataDir "Cache"),
-  (Join-Path $userDataDir "Code Cache"),
-  (Join-Path $userDataDir "GPUCache"),
-  (Join-Path $userDataDir "DawnCache"),
-  (Join-Path $userDataDir "GraphiteDawnCache"),
-  (Join-Path $userDataDir "Partitions\david-soul\Code Cache"),
-  (Join-Path $userDataDir "Partitions\david-soul\GPUCache"),
-  (Join-Path $userDataDir "Partitions\david-soul\DawnCache"),
-  (Join-Path $userDataDir "Partitions\david-soul\Network\Cache"),
-  (Join-Path $userDataDir "Partitions\david-soul\Service Worker\CacheStorage"),
-  (Join-Path $userDataDir "Partitions\david-soul\Shared Dictionary\cache"),
-  $cacheDir
+  (Join-Path $userDataDir 'Cache'),
+  (Join-Path $userDataDir 'Code Cache'),
+  (Join-Path $userDataDir 'GPUCache'),
+  (Join-Path $userDataDir 'DawnCache'),
+  (Join-Path $userDataDir 'GraphiteDawnCache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\Code Cache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\GPUCache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\DawnCache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\Network\Cache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\Service Worker\CacheStorage'),
+  (Join-Path $userDataDir 'Partitions\david-soul\Shared Dictionary\cache')
 )
 
-foreach ($path in $cachePaths) {
-  if (Test-Path $path) {
-    Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($item in $cachePaths) {
+  if (Test-Path -LiteralPath $item) {
+    Remove-Item -LiteralPath $item -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 
-New-Item -ItemType Directory -Force -Path $userDataDir, $cacheDir | Out-Null
+New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
+New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
-if (!(Test-Path $electronExe)) {
-  Write-Host "Electron липсва. Изпълнявам npm install..." -ForegroundColor Yellow
+if (-not (Test-Path -LiteralPath $electronExe)) {
+  Write-Host 'Electron is missing. Running npm install ...' -ForegroundColor Yellow
   npm install
 }
 
-if (!(Test-Path $electronExe)) {
-  throw "Electron не е намерен: $electronExe"
+if (-not (Test-Path -LiteralPath $electronExe)) {
+  throw "Electron was not found at $electronExe"
 }
 
-$drive = Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($storageRoot).Substring(0, 1))
-if ($drive.Free -lt 500MB) {
-  throw "На E: има под 500 MB свободно място. Освободи място преди стартиране."
+$driveName = [System.IO.Path]::GetPathRoot($storageRoot).Substring(0, 1)
+$drive = Get-PSDrive -Name $driveName
+
+if ($drive.Free -lt 1GB) {
+  throw 'E: has less than 1 GB free space.'
 }
 
 Write-Host "User data: $userDataDir" -ForegroundColor Green
 Write-Host "Cache:     $cacheDir" -ForegroundColor Green
-Write-Host "Стартирам DAVID. Остави този PowerShell отворен." -ForegroundColor Green
+Write-Host "Temp:      $tempDir" -ForegroundColor Green
+Write-Host 'Starting DAVID. Keep this PowerShell window open.' -ForegroundColor Green
 
-& $electronExe `
-  "--user-data-dir=$userDataDir" `
-  "--disk-cache-dir=$cacheDir" `
-  "--disable-gpu-shader-disk-cache" `
-  $root
+& $electronExe \
+  "--user-data-dir=$userDataDir" \
+  "--disk-cache-dir=$cacheDir" \
+  '--disable-gpu-shader-disk-cache' \
+  '.'
 
 exit $LASTEXITCODE
