@@ -39,6 +39,21 @@ function sameConversation(current, target) {
   }
 }
 
+function buildChatGptLoginUrl(target) {
+  const validated = validateSoulChatUrl(target);
+  const parsed = new URL(validated);
+  const next = `${parsed.pathname}${parsed.search || ""}`;
+  return `https://chatgpt.com/auth/login?next=${encodeURIComponent(next)}`;
+}
+
+function isChatGptUrl(value) {
+  try {
+    return new URL(String(value || "")).hostname === "chatgpt.com";
+  } catch {
+    return false;
+  }
+}
+
 class CdpConnection {
   constructor(webSocketUrl) {
     if (typeof WebSocket !== "function") {
@@ -106,6 +121,7 @@ class EdgeSoulBrowserAgent {
   constructor({ sendStatus, chatUrl, rootDir }) {
     this.sendStatus = sendStatus;
     this.chatUrl = validateSoulChatUrl(chatUrl);
+    this.loginUrl = buildChatGptLoginUrl(this.chatUrl);
     this.rootDir = rootDir;
     this.port = Number(process.env.DAVID_EDGE_DEBUG_PORT || 9333);
     this.profileDir = process.env.DAVID_EDGE_PROFILE_DIR ||
@@ -122,7 +138,7 @@ class EdgeSoulBrowserAgent {
     const text = String(message || stage || "DAVID SOUL is working.");
     this.reportLog.push({ stage, message: text, details, kind, at: Date.now() });
     this.reportLog = this.reportLog.slice(-30);
-    this.sendStatus(text, kind);
+    this.sendStatus(text, kind, { stage, details });
     return true;
   }
 
@@ -149,6 +165,7 @@ class EdgeSoulBrowserAgent {
 
     const args = [
       `--remote-debugging-port=${this.port}`,
+      "--remote-debugging-address=127.0.0.1",
       `--user-data-dir=${this.profileDir}`,
       "--no-first-run",
       "--no-default-browser-check",
@@ -170,7 +187,7 @@ class EdgeSoulBrowserAgent {
       await this.showReport(
         "opening_edge",
         "DAVID opens Microsoft Edge with the permanent SOUL profile.",
-        { profile: this.profileDir },
+        { profile: this.profileDir, debug_address: `127.0.0.1:${this.port}` },
         "working"
       );
       this.startEdge();
@@ -184,7 +201,7 @@ class EdgeSoulBrowserAgent {
 
     throw new Error(
       `Microsoft Edge did not expose the DAVID debugging port ${this.port}. ` +
-      `Close other DAVID Edge windows and restart.`
+      "Close the dedicated DAVID Edge window and restart SOUL mode."
     );
   }
 
@@ -195,11 +212,7 @@ class EdgeSoulBrowserAgent {
     );
 
     if (!target) {
-      target = targets.find((item) =>
-        item.type === "page" && /(^|\.)chatgpt\.com$/i.test((() => {
-          try { return new URL(item.url).hostname; } catch { return ""; }
-        })())
-      );
+      target = targets.find((item) => item.type === "page" && isChatGptUrl(item.url));
     }
 
     if (!target) {
@@ -224,6 +237,7 @@ class EdgeSoulBrowserAgent {
     this.targetId = target.id;
     await this.connection.send("Runtime.enable");
     await this.connection.send("Page.enable");
+    await this.connection.send("Page.bringToFront").catch(() => {});
     return this.connection;
   }
 
@@ -245,6 +259,7 @@ class EdgeSoulBrowserAgent {
   async navigate(url) {
     const connection = await this.connect();
     await connection.send("Page.navigate", { url });
+    await connection.send("Page.bringToFront").catch(() => {});
   }
 
   async diagnostics() {
@@ -257,7 +272,8 @@ class EdgeSoulBrowserAgent {
         title: document.title,
         promptCount: prompt ? 1 : 0,
         bodyLength: body.length,
-        loginVisible: /log in|sign in|вход|влизане/i.test(body),
+        loginVisible: /log in|sign in|continue with|вход|влизане|продължи с/i.test(body),
+        authPage: /\\/auth\\/|\\/login|\\/onboarding|\\/welcome/i.test(location.pathname),
         readyState: document.readyState
       };
     })()`);
@@ -267,17 +283,22 @@ class EdgeSoulBrowserAgent {
 
   async openIfNeeded(url = this.chatUrl) {
     const target = validateSoulChatUrl(url);
+    const loginUrl = buildChatGptLoginUrl(target);
     await this.connect();
 
     const started = Date.now();
     let lastNavigate = 0;
     let lastReport = 0;
+    let loginNavigationAttempted = false;
 
     while (Date.now() - started < 10 * 60 * 1000) {
-      let info = await this.diagnostics().catch(() => null);
+      const info = await this.diagnostics().catch(() => null);
       const current = info?.url || "";
+      const now = Date.now();
+      const elapsed = now - started;
+      const promptReady = Number(info?.promptCount || 0) > 0;
 
-      if (sameConversation(current, target) && Number(info?.promptCount || 0) > 0) {
+      if (sameConversation(current, target) && promptReady) {
         await this.showReport(
           "prompt_ready",
           "The fixed ChatGPT session is open in Microsoft Edge. DAVID is waiting for SOUL.",
@@ -287,28 +308,61 @@ class EdgeSoulBrowserAgent {
         return true;
       }
 
-      const now = Date.now();
-      if (Number(info?.promptCount || 0) > 0 && !sameConversation(current, target) && now - lastNavigate > 4000) {
+      if (promptReady && !sameConversation(current, target) && now - lastNavigate > 3000) {
         lastNavigate = now;
+        await this.showReport(
+          "opening_fixed_chat",
+          "ChatGPT login is active. DAVID opens the fixed SOUL conversation.",
+          info || {},
+          "working"
+        );
         await this.navigate(target);
-        await sleep(1200);
+        await sleep(1400);
         continue;
       }
 
-      if (!/chatgpt\.com/i.test(current) && now - lastNavigate > 4000) {
+      if (!isChatGptUrl(current) && now - lastNavigate > 3000) {
         lastNavigate = now;
         await this.navigate(target);
-        await sleep(1200);
+        await sleep(1400);
+        continue;
+      }
+
+      const blankOrSignedOut = Boolean(info) && (
+        info.authPage ||
+        info.loginVisible ||
+        (elapsed > 5000 && Number(info.bodyLength || 0) < 80)
+      );
+
+      if (
+        blankOrSignedOut &&
+        !info?.authPage &&
+        !loginNavigationAttempted &&
+        now - lastNavigate > 3000
+      ) {
+        loginNavigationAttempted = true;
+        lastNavigate = now;
+        await this.showReport(
+          "opening_login",
+          "DAVID opens the ChatGPT login page in the dedicated Edge profile.",
+          info || {},
+          "working"
+        );
+        await this.navigate(loginUrl);
+        await sleep(1400);
         continue;
       }
 
       if (now - lastReport > 2000) {
         lastReport = now;
+        const loginRequired = Boolean(info?.authPage || info?.loginVisible || blankOrSignedOut);
         await this.showReport(
-          "manual_login",
-          "Log in to ChatGPT in the Microsoft Edge window. DAVID will continue automatically.",
+          loginRequired ? "login_required" : "waiting_chatgpt",
+          loginRequired
+            ? "Log in to ChatGPT in the Microsoft Edge window. DAVID will continue automatically."
+            : "DAVID is waiting for the fixed ChatGPT session to finish loading.",
           info || {},
-          "working"
+          loginRequired ? "login_required" : "working"
         );
       }
 
@@ -321,23 +375,46 @@ class EdgeSoulBrowserAgent {
   async getSnapshot() {
     return this.evaluate(`(() => {
       const clean = (value) => String(value || '').replace(/\\u200b/g, '').replace(/\\n{3,}/g, '\\n\\n').trim();
-      const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"], article'));
+      const candidates = [];
+      const seen = new Set();
+      const add = (node) => {
+        if (!node || seen.has(node)) return;
+        seen.add(node);
+        candidates.push(node);
+      };
+      for (const node of document.querySelectorAll('[data-testid^="conversation-turn-"]')) add(node);
+      for (const node of document.querySelectorAll('article')) add(node);
+      for (const roleNode of document.querySelectorAll('[data-message-author-role]')) {
+        add(roleNode.closest('[data-testid^="conversation-turn-"]') || roleNode.closest('article') || roleNode);
+      }
+
       const messages = [];
-      for (const turn of turns) {
-        const roleNode = turn.querySelector('[data-message-author-role]') || (turn.matches('[data-message-author-role]') ? turn : null);
-        let role = clean(roleNode?.getAttribute('data-message-author-role')).toLowerCase();
+      for (const turn of candidates) {
+        const roleNode = turn.matches?.('[data-message-author-role]')
+          ? turn
+          : turn.querySelector?.('[data-message-author-role]');
+        const role = clean(roleNode?.getAttribute?.('data-message-author-role')).toLowerCase();
         if (role !== 'assistant' && role !== 'user') continue;
         const preferred = role === 'assistant'
-          ? turn.querySelector('.markdown, [class*="markdown"], [class*="prose"]')
+          ? turn.querySelector?.('.markdown, [class*="markdown"], [class*="prose"], [data-testid*="assistant-message"]')
           : roleNode;
         const text = clean(preferred?.innerText || preferred?.textContent || turn.innerText || '');
         if (text) messages.push({ role, text });
       }
+
       const assistants = messages.filter((item) => item.role === 'assistant');
       const users = messages.filter((item) => item.role === 'user');
       const lastAssistant = assistants.at(-1)?.text || '';
       const lastUser = users.at(-1)?.text || '';
-      const generating = Boolean(document.querySelector('button[data-testid="stop-button"], [data-is-streaming="true"], .result-streaming'));
+      const generating = Boolean(document.querySelector(
+        'button[data-testid="stop-button"], [data-is-streaming="true"], .result-streaming, [class*="result-streaming"]'
+      ));
+      const body = clean(document.body?.innerText || '').toLowerCase();
+      let pageError = '';
+      if (body.includes('something went wrong')) pageError = 'ChatGPT showed Something went wrong.';
+      else if (body.includes('network error')) pageError = 'ChatGPT showed a network error.';
+      else if (body.includes('conversation not found')) pageError = 'The fixed ChatGPT conversation was not found.';
+
       return {
         assistantCount: assistants.length,
         userCount: users.length,
@@ -345,7 +422,7 @@ class EdgeSoulBrowserAgent {
         lastLength: lastAssistant.length,
         lastUser,
         generating,
-        pageError: '',
+        pageError,
         url: location.href
       };
     })()`);
@@ -408,6 +485,7 @@ class EdgeSoulBrowserAgent {
 
     while (Date.now() - started < timeoutMs) {
       const snapshot = await this.getSnapshot();
+      if (snapshot.pageError) throw new Error(snapshot.pageError);
       const isNew = snapshot.assistantCount > Number(before.assistantCount || 0) ||
         (snapshot.last && snapshot.last !== String(before.last || ""));
 
@@ -438,7 +516,9 @@ class EdgeSoulBrowserAgent {
 module.exports = {
   CdpConnection,
   EdgeSoulBrowserAgent,
+  buildChatGptLoginUrl,
   findEdgeExecutable,
+  isChatGptUrl,
   normalizeUrl,
   sameConversation
 };
