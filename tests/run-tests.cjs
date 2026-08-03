@@ -6,7 +6,10 @@ const {
   extractYouTubeQuery
 } = require("../core/demo-teacher.cjs");
 const {
-  createTeacherUpgradeLoopSkill
+  createTeacherUpgradeLoopSkill,
+  createSoulRelayStartSkill,
+  createSoulRelayStopSkill,
+  createSoulRelayStatusSkill
 } = require("../core/builtin-skills.cjs");
 const {
   matchSkill,
@@ -18,6 +21,11 @@ const {
   classifyPowerShellRisk,
   parseTeacherResponse
 } = require("../core/teacher-loop.cjs");
+const {
+  buildSoulPrompt,
+  normalizeClaimedMessage,
+  validateSoulChatUrl
+} = require("../core/soul-relay.cjs");
 
 const command = "otvori yt i pusni 2pac";
 const skill = buildYouTubeSkill();
@@ -49,6 +57,50 @@ const teacherRendered = renderTemplate(
 );
 assert.strictEqual(teacherRendered[0].action, "teacher_loop");
 assert.strictEqual(teacherRendered[0].goal, "провери тестовете");
+
+const soulStartSkill = createSoulRelayStartSkill();
+const soulStopSkill = createSoulRelayStopSkill();
+const soulStatusSkill = createSoulRelayStatusSkill();
+
+assert.doesNotThrow(() => validateSkill(soulStartSkill));
+assert.doesNotThrow(() => validateSkill(soulStopSkill));
+assert.doesNotThrow(() => validateSkill(soulStatusSkill));
+assert.strictEqual(
+  matchSkill("twins", [soulStartSkill]).skill.steps[0].action,
+  "soul_relay_start"
+);
+assert.ok(matchSkill("близнаци", [soulStartSkill]));
+assert.ok(matchSkill("спри soul", [soulStopSkill]));
+assert.ok(matchSkill("soul status", [soulStatusSkill]));
+
+assert.strictEqual(
+  validateSoulChatUrl("https://chatgpt.com/c/test-session"),
+  "https://chatgpt.com/c/test-session"
+);
+assert.throws(
+  () => validateSoulChatUrl("https://chatgpt.com/share/test-session"),
+  /реалen|реален|ChatGPT/u
+);
+
+const claimedSoulMessage = normalizeClaimedMessage({
+  message: {
+    id: "message-1",
+    user_id: "user-1",
+    conversation_id: "conversation-1",
+    text: "Как си?"
+  }
+});
+assert.strictEqual(claimedSoulMessage.id, "message-1");
+assert.strictEqual(claimedSoulMessage.userId, "user-1");
+assert.strictEqual(claimedSoulMessage.text, "Как си?");
+
+const soulPrompt = buildSoulPrompt({
+  contextText: "USER: Здравей\nSOUL: Здравей!",
+  messages: [],
+  text: "Как си?"
+});
+assert.match(soulPrompt, /USER: Здравей/);
+assert.match(soulPrompt, /Как си\?/);
 
 const protocolResponse = parseTeacherResponse(JSON.stringify({
   protocol: PROTOCOL,

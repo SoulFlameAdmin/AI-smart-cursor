@@ -113,10 +113,86 @@ function createChatGptTeacherSkill() {
   };
 }
 
+function createSoulRelayStartSkill() {
+  return {
+    skill_key: "builtin_soul_relay_start",
+    title: "Активирай DAVID SOUL",
+    description:
+      "Активира отделния SOUL канал, който взема въпроси от Twins, изпраща ги в зададената GPT сесия и връща отговора.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "low",
+    matcher: {
+      type: "regex",
+      pattern:
+        "^(?:twins|близнаци|bliznaci|soul\\s*(?:on|start)|(?:стартирай|пусни|активирай)\\s+(?:soul|сол|соул|twins|близнаци))(?:\\s+режим)?\\s*[.!?…]*$",
+      flags: "iu",
+      variables: []
+    },
+    steps: [
+      {
+        action: "soul_relay_start"
+      }
+    ]
+  };
+}
+
+function createSoulRelayStopSkill() {
+  return {
+    skill_key: "builtin_soul_relay_stop",
+    title: "Спри DAVID SOUL",
+    description: "Спира приемането на нови SOUL въпроси от Twins.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "low",
+    matcher: {
+      type: "regex",
+      pattern:
+        "^(?:soul\\s*(?:off|stop)|(?:спри|изключи)\\s+(?:soul|сол|соул|twins|близнаци))(?:\\s+режим)?\\s*[.!?…]*$",
+      flags: "iu",
+      variables: []
+    },
+    steps: [
+      {
+        action: "soul_relay_stop"
+      }
+    ]
+  };
+}
+
+function createSoulRelayStatusSkill() {
+  return {
+    skill_key: "builtin_soul_relay_status",
+    title: "Статус на DAVID SOUL",
+    description: "Показва дали SOUL каналът е активен и конфигуриран.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "low",
+    matcher: {
+      type: "regex",
+      pattern:
+        "^(?:(?:soul|сол|соул)\\s+status|статус\\s+(?:на\\s+)?(?:soul|сол|соул|twins|близнаци))\\s*[.!?…]*$",
+      flags: "iu",
+      variables: []
+    },
+    steps: [
+      {
+        action: "soul_relay_status"
+      }
+    ]
+  };
+}
+
 function getBuiltInSkills() {
   return [
     createTeacherUpgradeLoopSkill(),
-    createChatGptTeacherSkill()
+    createChatGptTeacherSkill(),
+    createSoulRelayStartSkill(),
+    createSoulRelayStopSkill(),
+    createSoulRelayStatusSkill()
   ];
 }
 
@@ -124,5 +200,8 @@ module.exports = {
   DAVID_TEACHER_CHAT_URL,
   createTeacherUpgradeLoopSkill,
   createChatGptTeacherSkill,
+  createSoulRelayStartSkill,
+  createSoulRelayStopSkill,
+  createSoulRelayStatusSkill,
   getBuiltInSkills
 };

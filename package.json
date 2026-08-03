@@ -6,8 +6,9 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
+    "start:soul": "electron edge-soul-main.cjs",
     "dev": "cross-env DAVID_DEV=1 electron .",
-    "test": "node tests/run-tests.cjs",
+    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs && node --check soul-main.cjs && node --check edge-soul-main.cjs && node --check core/edge-cdp-soul-browser.cjs && node --check core/edge-soul-persistent-session.cjs",
     "dist:win": "electron-builder --win nsis",
     "pack:win": "electron-builder --win dir"
   },
@@ -26,6 +27,8 @@
     "asar": true,
     "files": [
       "main.cjs",
+      "soul-main.cjs",
+      "edge-soul-main.cjs",
       "preload.cjs",
       "core/**/*",
       "renderer/**/*",
