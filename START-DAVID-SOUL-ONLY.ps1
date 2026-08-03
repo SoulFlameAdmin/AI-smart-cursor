@@ -21,7 +21,7 @@ Write-Host '================================================' -ForegroundColor C
 Write-Host ''
 
 if (-not (Test-Path -LiteralPath $envFile)) {
-  throw 'Липсва локалният .env файл.'
+  throw 'Local .env file is missing.'
 }
 
 $envLines = Get-Content -LiteralPath $envFile
@@ -34,19 +34,19 @@ $deviceToken = if ($tokenLine) { ($tokenLine -split '=', 2)[1].Trim() } else { '
 $supabaseUrl = if ($supabaseLine) { ($supabaseLine -split '=', 2)[1].Trim() } else { '' }
 
 if (-not $chatUrl -or $chatUrl -match 'PASTE|private-chat-id|<.+>') {
-  throw 'В .env липсва реалният DAVID_SOUL_CHAT_URL от вида https://chatgpt.com/c/...'
+  throw 'DAVID_SOUL_CHAT_URL is missing from .env. Use a private https://chatgpt.com/c/... URL.'
 }
 
 if ($chatUrl -notmatch '^https://chatgpt\.com/c/[A-Za-z0-9-]+') {
-  throw 'DAVID_SOUL_CHAT_URL не е валиден частен ChatGPT разговор.'
+  throw 'DAVID_SOUL_CHAT_URL is not a valid private ChatGPT conversation URL.'
 }
 
 if (-not $supabaseUrl) {
-  throw 'В .env липсва SUPABASE_URL.'
+  throw 'SUPABASE_URL is missing from .env.'
 }
 
 if (-not $deviceToken -or $deviceToken.Length -lt 32) {
-  throw 'В .env липсва валиден DAVID_DEVICE_TOKEN.'
+  throw 'DAVID_DEVICE_TOKEN is missing or invalid in .env.'
 }
 
 New-Item -ItemType Directory -Force -Path $storageRoot | Out-Null
@@ -62,18 +62,18 @@ $env:ELECTRON_ENABLE_LOGGING = '1'
 $env:ELECTRON_ENABLE_STACK_DUMPING = '1'
 
 if (-not (Test-Path -LiteralPath $electronExe)) {
-  Write-Host 'Electron липсва. Стартирам npm install...' -ForegroundColor Yellow
+  Write-Host 'Electron is missing. Running npm install...' -ForegroundColor Yellow
   npm install
   if ($LASTEXITCODE -ne 0) {
-    throw "npm install завърши с код $LASTEXITCODE"
+    throw "npm install exited with code $LASTEXITCODE"
   }
 }
 
 if (-not (Test-Path -LiteralPath $electronExe)) {
-  throw "Electron не е намерен: $electronExe"
+  throw "Electron was not found: $electronExe"
 }
 
-# Спира само Electron процеси от тази DAVID инсталация, не всички Electron приложения.
+# Stop only Electron processes that belong to this DAVID installation.
 Get-CimInstance Win32_Process -Filter "Name='electron.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.ExecutablePath -eq $electronExe } |
   ForEach-Object {
@@ -84,9 +84,9 @@ Remove-Item -LiteralPath $stdoutLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $stderrLog -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
 
-Write-Host 'Стартирам само DAVID SOUL relay.' -ForegroundColor Green
-Write-Host 'Teacher режимът няма да бъде зареден.' -ForegroundColor Green
-Write-Host 'Electron ще отвори точния DAVID_SOUL_CHAT_URL и ще чака SOUL.' -ForegroundColor Green
+Write-Host 'Starting DAVID SOUL relay only.' -ForegroundColor Green
+Write-Host 'Teacher mode will not be loaded.' -ForegroundColor Green
+Write-Host 'Electron will open DAVID_SOUL_CHAT_URL and wait for SOUL messages.' -ForegroundColor Green
 Write-Host ''
 
 $electronArgs = @(
@@ -112,28 +112,28 @@ Start-Sleep -Seconds 8
 $process.Refresh()
 
 if ($process.HasExited) {
-  Write-Host 'DAVID SOUL спря при старта.' -ForegroundColor Red
+  Write-Host 'DAVID SOUL stopped during startup.' -ForegroundColor Red
   if (Test-Path -LiteralPath $stdoutLog) {
     Get-Content -LiteralPath $stdoutLog -Tail 80
   }
   if (Test-Path -LiteralPath $stderrLog) {
     Get-Content -LiteralPath $stderrLog -Tail 120
   }
-  throw "DAVID SOUL Electron завърши с код $($process.ExitCode)."
+  throw "DAVID SOUL Electron exited with code $($process.ExitCode)."
 }
 
-Write-Host "DAVID SOUL RUNNING · PID $($process.Id)" -ForegroundColor Green
-Write-Host 'Точната GPT сесия трябва да е отворена и да показва, че чака Soul.' -ForegroundColor Yellow
+Write-Host "DAVID SOUL RUNNING - PID $($process.Id)" -ForegroundColor Green
+Write-Host 'The fixed GPT session should be open and waiting for SOUL.' -ForegroundColor Yellow
 Write-Host "Log: $stdoutLog" -ForegroundColor DarkGray
 Write-Host "Errors: $stderrLog" -ForegroundColor DarkGray
 Write-Host ''
-Write-Host 'Не пиши команда в DAVID. Изпрати съобщение директно от SOUL чата.' -ForegroundColor Cyan
+Write-Host 'Do not enter a DAVID command. Send a message directly from the SOUL chat.' -ForegroundColor Cyan
 
 Wait-Process -Id $process.Id
 $process.Refresh()
 
 Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
-Write-Host "DAVID SOUL спря · код $($process.ExitCode)" -ForegroundColor Yellow
+Write-Host "DAVID SOUL stopped - exit code $($process.ExitCode)" -ForegroundColor Yellow
 
 if (Test-Path -LiteralPath $stderrLog) {
   Get-Content -LiteralPath $stderrLog -Tail 120
