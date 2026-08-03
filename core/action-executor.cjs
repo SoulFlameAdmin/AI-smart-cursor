@@ -3,7 +3,7 @@
 const { spawn } = require("child_process");
 const { BrowserAgent, sleep, validateHttpUrl } = require("./browser-agent.cjs");
 const { TeacherLoop } = require("./teacher-loop.cjs");
-const { SoulRelay } = require("./soul-relay.cjs");
+const { LiveSoulRelay } = require("./soul-relay-live.cjs");
 const { clickAt, typeText } = require("./windows-native.cjs");
 const { ALLOWED_ACTIONS } = require("./skill-schema.cjs");
 
@@ -27,10 +27,21 @@ class ActionExecutor {
       sendStatus,
       confirmAction
     });
-    this.soulRelay = new SoulRelay({
+    this.soulRelay = new LiveSoulRelay({
       BrowserWindow,
       sendStatus
     });
+
+    if (this.soulRelay.autoStart) {
+      setTimeout(() => {
+        this.soulRelay.start().catch((error) => {
+          this.sendStatus(
+            `DAVID Soul auto-start чака конфигурация: ${error.message}`,
+            "warning"
+          );
+        });
+      }, 0);
+    }
   }
 
   async run(steps) {
