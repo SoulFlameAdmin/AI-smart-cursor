@@ -37,6 +37,14 @@ function htmlEscape(value) {
     .replace(/'/g, "&#39;");
 }
 
+function isChatGptLocation(value) {
+  try {
+    return new URL(String(value || "")).hostname === "chatgpt.com";
+  } catch {
+    return false;
+  }
+}
+
 function dataPage(title, message, detail = "") {
   const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${htmlEscape(title)}</title>
@@ -130,16 +138,36 @@ class DavidSoulBrowserWindow extends BrowserWindow {
     wc.on(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        const currentURL = wc.isDestroyed() ? "" : wc.getURL();
+        const currentTitle = wc.isDestroyed() ? "" : wc.getTitle();
         console.error(
           `[DAVID SOUL WINDOW] did-fail-load | code=${errorCode} | ` +
-          `${errorDescription} | main=${isMainFrame} | ${validatedURL}`
+          `${errorDescription} | main=${isMainFrame} | ${validatedURL} | ` +
+          `current=${currentURL} | title=${currentTitle}`
         );
 
-        if (!isMainFrame || errorCode === -3 || wc.isDestroyed()) return;
+        if (!isMainFrame || wc.isDestroyed()) return;
+
+        const chatGptNavigation =
+          isChatGptLocation(validatedURL) ||
+          isChatGptLocation(currentURL) ||
+          /chatgpt/i.test(currentTitle);
+        const redirectOrCancelled = errorCode === -2 || errorCode === -3;
+
+        if (chatGptNavigation && redirectOrCancelled) {
+          log(
+            "soft-navigation-error-ignored",
+            `code=${errorCode} | current=${currentURL} | title=${currentTitle}`
+          );
+          return;
+        }
+
         const detail = [
           `Error code: ${errorCode}`,
           `Description: ${errorDescription}`,
           `URL: ${validatedURL}`,
+          `Current URL: ${currentURL}`,
+          `Title: ${currentTitle}`,
           "See .david-system/logs/david-soul-error.log for details."
         ].join("\n");
         wc.loadURL(
@@ -186,15 +214,7 @@ async function bootSoulOnly() {
   });
 
   await relay.start();
-
-  const openTimeout = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error("ChatGPT load timed out after 45 seconds.")), 45000);
-  });
-
-  await Promise.race([
-    relay.browser.openIfNeeded(chatUrl),
-    openTimeout
-  ]);
+  await relay.browser.openIfNeeded(chatUrl);
 
   await relay.browser.showReport(
     "waiting",
