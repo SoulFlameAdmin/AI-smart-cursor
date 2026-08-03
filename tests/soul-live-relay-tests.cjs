@@ -114,6 +114,18 @@ assert.ok(queueStartIndex > gptReadyIndex, "Twins queue must start only after GP
 assert.match(edgeMainSource, /requestSingleInstanceLock/u);
 assert.match(edgeMainSource, /soul-status\.json/u);
 assert.match(edgeMainSource, /installPersistentSoulSession/u);
+assert.match(edgeMainSource, /installReliableSoulSendConfirmation/u);
+assert.match(edgeMainSource, /lastConsoleStatusSignature/u);
+
+const sendConfirmSource = fs.readFileSync(
+  path.join(root, "core", "edge-soul-send-confirm-patch.cjs"),
+  "utf8"
+);
+assert.match(sendConfirmSource, /waitForTypedPrompt/u);
+assert.match(sendConfirmSource, /Date\.now\(\) - started < 20000/u);
+assert.match(sendConfirmSource, /promptWasAccepted/u);
+assert.match(sendConfirmSource, /duplicate_submit_retry: false/u);
+assert.doesNotMatch(sendConfirmSource, /button\.click\(\)[\s\S]*button\.click\(\)/u);
 
 const persistentSource = fs.readFileSync(
   path.join(root, "core", "edge-soul-persistent-session.cjs"),
@@ -148,4 +160,4 @@ assert.match(stopSource, /json\/close/u);
 assert.match(stopSource, /flush the persistent ChatGPT cookies/u);
 assert.match(stopSource, /login_profile = 'preserved'/u);
 
-console.log("DAVID SOUL mode saved-login, fixed-chat and Twins handoff tests: PASS");
+console.log("DAVID SOUL mode saved-login, reliable-send, fixed-chat and Twins handoff tests: PASS");
