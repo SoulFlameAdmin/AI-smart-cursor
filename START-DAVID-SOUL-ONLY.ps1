@@ -60,6 +60,7 @@ $env:TMP = $tempDir
 $env:ELECTRON_CACHE = $cacheDir
 $env:ELECTRON_ENABLE_LOGGING = '1'
 $env:ELECTRON_ENABLE_STACK_DUMPING = '1'
+$env:DAVID_SOUL_PARTITION = 'persist:david-soul-v2'
 
 if (-not (Test-Path -LiteralPath $electronExe)) {
   Write-Host 'Electron is missing. Running npm install...' -ForegroundColor Yellow
@@ -73,7 +74,6 @@ if (-not (Test-Path -LiteralPath $electronExe)) {
   throw "Electron was not found: $electronExe"
 }
 
-# Stop only Electron processes that belong to this DAVID installation.
 Get-CimInstance Win32_Process -Filter "Name='electron.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.ExecutablePath -eq $electronExe } |
   ForEach-Object {
@@ -86,15 +86,14 @@ Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
 
 Write-Host 'Starting DAVID SOUL relay only.' -ForegroundColor Green
 Write-Host 'Teacher mode will not be loaded.' -ForegroundColor Green
-Write-Host 'Electron will open DAVID_SOUL_CHAT_URL and wait for SOUL messages.' -ForegroundColor Green
-Write-Host 'Normal Chromium GPU rendering is enabled for the ChatGPT window.' -ForegroundColor Green
+Write-Host 'A fresh Electron SOUL profile will open DAVID_SOUL_CHAT_URL.' -ForegroundColor Green
+Write-Host 'Live Chromium load diagnostics are enabled.' -ForegroundColor Green
 Write-Host ''
 
 $electronArgs = @(
   "--user-data-dir=$userDataDir"
   "--disk-cache-dir=$cacheDir"
   '--ignore-gpu-blocklist'
-  '--disable-features=NetworkServiceSandbox'
   'soul-main.cjs'
 )
 
@@ -108,26 +107,30 @@ $process = Start-Process `
 
 Set-Content -LiteralPath $pidFile -Value $process.Id -Encoding ascii
 
-Start-Sleep -Seconds 8
+Start-Sleep -Seconds 10
 $process.Refresh()
 
+Write-Host ''
+Write-Host '--- DAVID SOUL STARTUP LOG ---' -ForegroundColor DarkCyan
+if (Test-Path -LiteralPath $stdoutLog) {
+  Get-Content -LiteralPath $stdoutLog -Tail 60
+}
+if (Test-Path -LiteralPath $stderrLog) {
+  Get-Content -LiteralPath $stderrLog -Tail 100
+}
+Write-Host '--- END STARTUP LOG ---' -ForegroundColor DarkCyan
+Write-Host ''
+
 if ($process.HasExited) {
-  Write-Host 'DAVID SOUL stopped during startup.' -ForegroundColor Red
-  if (Test-Path -LiteralPath $stdoutLog) {
-    Get-Content -LiteralPath $stdoutLog -Tail 80
-  }
-  if (Test-Path -LiteralPath $stderrLog) {
-    Get-Content -LiteralPath $stderrLog -Tail 120
-  }
   throw "DAVID SOUL Electron exited with code $($process.ExitCode)."
 }
 
 Write-Host "DAVID SOUL RUNNING - PID $($process.Id)" -ForegroundColor Green
-Write-Host 'The fixed GPT session should be visible and waiting for SOUL.' -ForegroundColor Yellow
+Write-Host 'The window must show a loading card, ChatGPT, or a readable load error - never a silent black screen.' -ForegroundColor Yellow
 Write-Host "Log: $stdoutLog" -ForegroundColor DarkGray
 Write-Host "Errors: $stderrLog" -ForegroundColor DarkGray
 Write-Host ''
-Write-Host 'Do not enter a DAVID command. Send a message directly from the SOUL chat.' -ForegroundColor Cyan
+Write-Host 'Do not enter a DAVID command. Send a message directly from the SOUL chat after ChatGPT is visible.' -ForegroundColor Cyan
 
 Wait-Process -Id $process.Id
 $process.Refresh()
