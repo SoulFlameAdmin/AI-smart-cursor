@@ -18,6 +18,32 @@ function Stop-Id {
   }
 }
 
+function Close-DavidEdgeGracefully {
+  param([int]$DebugPort)
+
+  if ($DebugPort -le 0) { return }
+
+  try {
+    $targets = @(Invoke-RestMethod `
+      -Uri "http://127.0.0.1:$DebugPort/json/list" `
+      -Method Get `
+      -TimeoutSec 3)
+
+    foreach ($target in $targets) {
+      if (-not $target.id) { continue }
+      try {
+        Invoke-RestMethod `
+          -Uri "http://127.0.0.1:$DebugPort/json/close/$($target.id)" `
+          -Method Get `
+          -TimeoutSec 3 | Out-Null
+      } catch {}
+    }
+
+    # Give Edge time to flush the persistent ChatGPT cookies and profile data.
+    Start-Sleep -Seconds 3
+  } catch {}
+}
+
 $debugPort = 0
 if (Test-Path -LiteralPath $modeFile) {
   try {
@@ -31,6 +57,8 @@ if (Test-Path -LiteralPath $modeFile) {
   } catch {}
 }
 
+# Stop the worker and local Twins server first. The Edge profile stays alive
+# long enough to save the current ChatGPT login.
 foreach ($pidFile in @($workerPidFile, $twinsPidFile)) {
   if (Test-Path -LiteralPath $pidFile) {
     $processId = 0
@@ -40,6 +68,10 @@ foreach ($pidFile in @($workerPidFile, $twinsPidFile)) {
   }
 }
 
+Close-DavidEdgeGracefully -DebugPort $debugPort
+
+# Force-stop only a remaining dedicated DAVID Edge process. Normal Edge
+# windows are never matched by this profile/port filter.
 Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue |
   Where-Object {
     $_.CommandLine -like "*$edgeProfile*" -or
@@ -52,9 +84,11 @@ if (Test-Path -LiteralPath $modeFile) {
   try {
     $mode = Get-Content -LiteralPath $modeFile -Raw -Encoding UTF8 | ConvertFrom-Json
     $mode.state = 'stopped'
+    $mode.login_profile = 'preserved'
     $mode.updated_at = (Get-Date).ToUniversalTime().ToString('o')
     $mode | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modeFile -Encoding UTF8
   } catch {}
 }
 
-Write-Host 'DAVID SOUL mode stopped. Normal Edge windows were not touched.' -ForegroundColor Green
+Write-Host 'DAVID SOUL mode stopped. The saved ChatGPT login profile was preserved.' -ForegroundColor Green
+Write-Host 'Normal Edge windows were not touched.' -ForegroundColor Green
