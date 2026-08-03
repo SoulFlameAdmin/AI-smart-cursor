@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "cross-env DAVID_DEV=1 electron .",
-    "test": "node tests/run-tests.cjs",
+    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs",
     "dist:win": "electron-builder --win nsis",
     "pack:win": "electron-builder --win dir"
   },
