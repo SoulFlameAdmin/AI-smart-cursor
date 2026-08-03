@@ -7,23 +7,29 @@ $storageRoot = Join-Path $root '.david-system'
 $userDataDir = Join-Path $storageRoot 'electron-user-data'
 $cacheDir = Join-Path $storageRoot 'electron-cache'
 $tempDir = Join-Path $storageRoot 'temp'
+$logsDir = Join-Path $storageRoot 'logs'
 $legacyUserData = Join-Path $env:APPDATA 'david-smart-cursor-v1'
 $electronExe = Join-Path $root 'node_modules\electron\dist\electron.exe'
+$stdoutLog = Join-Path $logsDir 'david-electron-out.log'
+$stderrLog = Join-Path $logsDir 'david-electron-error.log'
 
 Write-Host 'DAVID E-DRIVE START' -ForegroundColor Cyan
 Write-Host $storageRoot -ForegroundColor Cyan
 
-Get-Process electron -ErrorAction SilentlyContinue |
+Get-Process electron,node -ErrorAction SilentlyContinue |
   Stop-Process -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force -Path $storageRoot | Out-Null
 New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
 New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
 $env:TEMP = $tempDir
 $env:TMP = $tempDir
 $env:ELECTRON_CACHE = $cacheDir
+$env:ELECTRON_ENABLE_LOGGING = '1'
+$env:ELECTRON_ENABLE_STACK_DUMPING = '1'
 
 $legacyCachePaths = @(
   (Join-Path $legacyUserData 'Cache'),
@@ -31,10 +37,11 @@ $legacyCachePaths = @(
   (Join-Path $legacyUserData 'GPUCache'),
   (Join-Path $legacyUserData 'DawnCache'),
   (Join-Path $legacyUserData 'GraphiteDawnCache'),
+  (Join-Path $legacyUserData 'Network'),
   (Join-Path $legacyUserData 'Partitions\david-soul\Code Cache'),
   (Join-Path $legacyUserData 'Partitions\david-soul\GPUCache'),
   (Join-Path $legacyUserData 'Partitions\david-soul\DawnCache'),
-  (Join-Path $legacyUserData 'Partitions\david-soul\Network\Cache'),
+  (Join-Path $legacyUserData 'Partitions\david-soul\Network'),
   (Join-Path $legacyUserData 'Partitions\david-soul\Service Worker\CacheStorage'),
   (Join-Path $legacyUserData 'Partitions\david-soul\Shared Dictionary\cache')
 )
@@ -67,10 +74,11 @@ $cachePaths = @(
   (Join-Path $userDataDir 'GPUCache'),
   (Join-Path $userDataDir 'DawnCache'),
   (Join-Path $userDataDir 'GraphiteDawnCache'),
+  (Join-Path $userDataDir 'Network'),
   (Join-Path $userDataDir 'Partitions\david-soul\Code Cache'),
   (Join-Path $userDataDir 'Partitions\david-soul\GPUCache'),
   (Join-Path $userDataDir 'Partitions\david-soul\DawnCache'),
-  (Join-Path $userDataDir 'Partitions\david-soul\Network\Cache'),
+  (Join-Path $userDataDir 'Partitions\david-soul\Network'),
   (Join-Path $userDataDir 'Partitions\david-soul\Service Worker\CacheStorage'),
   (Join-Path $userDataDir 'Partitions\david-soul\Shared Dictionary\cache')
 )
@@ -84,6 +92,7 @@ foreach ($item in $cachePaths) {
 New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
 New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
 if (-not (Test-Path -LiteralPath $electronExe)) {
   Write-Host 'Electron is missing. Running npm install ...' -ForegroundColor Yellow
@@ -101,18 +110,54 @@ if ($drive.Free -lt 1GB) {
   throw 'E: has less than 1 GB free space.'
 }
 
+Remove-Item -LiteralPath $stdoutLog -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $stderrLog -Force -ErrorAction SilentlyContinue
+
 Write-Host "User data: $userDataDir" -ForegroundColor Green
 Write-Host "Cache:     $cacheDir" -ForegroundColor Green
 Write-Host "Temp:      $tempDir" -ForegroundColor Green
-Write-Host 'Starting DAVID. Keep this PowerShell window open.' -ForegroundColor Green
+Write-Host "Logs:      $logsDir" -ForegroundColor Green
+Write-Host 'Starting DAVID. This window will stay open while DAVID is running.' -ForegroundColor Green
 
 $electronArgs = @(
   "--user-data-dir=$userDataDir"
   "--disk-cache-dir=$cacheDir"
+  '--disable-gpu'
   '--disable-gpu-shader-disk-cache'
+  '--disable-features=NetworkServiceSandbox'
   '.'
 )
 
-& $electronExe $electronArgs
+$process = Start-Process `
+  -FilePath $electronExe `
+  -ArgumentList $electronArgs `
+  -WorkingDirectory $root `
+  -RedirectStandardOutput $stdoutLog `
+  -RedirectStandardError $stderrLog `
+  -PassThru
 
-exit $LASTEXITCODE
+Start-Sleep -Seconds 6
+$process.Refresh()
+
+if ($process.HasExited) {
+  Write-Host 'DAVID stopped during startup.' -ForegroundColor Red
+  if (Test-Path -LiteralPath $stdoutLog) {
+    Get-Content -LiteralPath $stdoutLog -Tail 40
+  }
+  if (Test-Path -LiteralPath $stderrLog) {
+    Get-Content -LiteralPath $stderrLog -Tail 80
+  }
+  throw "DAVID Electron exited with code $($process.ExitCode)."
+}
+
+Write-Host "DAVID RUNNING · PID $($process.Id)" -ForegroundColor Green
+Write-Host 'Open Soul and send a message. Keep this PowerShell window open.' -ForegroundColor Yellow
+Write-Host "Error log: $stderrLog" -ForegroundColor DarkGray
+
+Wait-Process -Id $process.Id
+$process.Refresh()
+
+Write-Host "DAVID stopped · exit code $($process.ExitCode)" -ForegroundColor Yellow
+if (Test-Path -LiteralPath $stderrLog) {
+  Get-Content -LiteralPath $stderrLog -Tail 80
+}
