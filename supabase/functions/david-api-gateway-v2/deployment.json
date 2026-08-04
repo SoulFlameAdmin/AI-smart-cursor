@@ -1,0 +1,8 @@
+{
+  "function": "david-api-gateway-v2",
+  "entrypoint": "index.ts",
+  "verify_jwt": true,
+  "runtime_state": "disabled",
+  "provider_calls": false,
+  "service_role_client": false
+}
