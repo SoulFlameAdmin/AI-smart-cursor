@@ -11,6 +11,12 @@ const migrationPath = path.join(
   "migrations",
   "20260804000100_david_multi_user_v2_identity_registry.sql"
 );
+const indexMigrationPath = path.join(
+  root,
+  "supabase",
+  "migrations",
+  "20260804000200_david_multi_user_v2_fk_indexes.sql"
+);
 const rollbackPath = path.join(
   root,
   "supabase",
@@ -19,16 +25,21 @@ const rollbackPath = path.join(
 );
 
 assert.ok(fs.existsSync(migrationPath), "Stage 2 migration must exist");
+assert.ok(fs.existsSync(indexMigrationPath), "Stage 2 index migration must exist");
 assert.ok(fs.existsSync(rollbackPath), "Stage 2 rollback must exist");
 
 const migration = fs.readFileSync(migrationPath, "utf8");
+const indexMigration = fs.readFileSync(indexMigrationPath, "utf8");
 const rollback = fs.readFileSync(rollbackPath, "utf8");
 const compact = migration.replace(/\s+/g, " ").toLowerCase();
+const indexCompact = indexMigration.replace(/\s+/g, " ").toLowerCase();
 const rollbackCompact = rollback.replace(/\s+/g, " ").toLowerCase();
 
 assert.match(compact, /^begin;/, "Migration must be transactional");
 assert.match(compact, /commit;\s*$/, "Migration must commit atomically");
 assert.match(compact, /create schema if not exists david_v2;/);
+assert.match(indexCompact, /^begin;/, "Index migration must be transactional");
+assert.match(indexCompact, /commit;\s*$/, "Index migration must commit atomically");
 
 for (const table of [
   "system_config",
@@ -84,6 +95,18 @@ assert.match(compact, /t\.owner_id = new\.user_id/);
 assert.match(compact, /conversations_user_twin_provider_unique/);
 assert.match(compact, /provider_conversation_id is not null/);
 
+for (const requiredIndex of [
+  /on david_v2\.conversations\(identity_id, user_id\)/,
+  /on david_v2\.conversations\(twin_id\)/,
+  /on david_v2\.user_consents\(identity_id, user_id\)/,
+  /on david_v2\.user_consents\(twin_id\)/,
+  /on david_v2\.soul_threads\(conversation_id, identity_id, user_id, twin_id\)/,
+  /on david_v2\.soul_threads\(source_thread_id\)/,
+  /on david_v2\.soul_threads\(twin_id\)/
+]) {
+  assert.match(indexCompact, requiredIndex, "Every Stage 2 foreign key must have a covering index");
+}
+
 assert.match(compact, /'david-v2-stage2-1'/);
 assert.match(compact, /multi_user_enabled[^,]*false/);
 assert.match(compact, /provider_enabled[^,]*false/);
@@ -102,12 +125,17 @@ for (const protectedObject of [
     new RegExp(`(?:alter|drop|truncate|delete from|update)\\s+(?:table\\s+)?${escaped}`),
     `Stage 2 must not mutate locked v1 object ${protectedObject}`
   );
+  assert.doesNotMatch(
+    indexCompact,
+    new RegExp(`(?:alter|drop|truncate|delete from|update)\\s+(?:table\\s+)?${escaped}`),
+    `Stage 2 index migration must not mutate locked v1 object ${protectedObject}`
+  );
 }
 
 assert.doesNotMatch(
-  migration,
+  `${migration}\n${indexMigration}`,
   /(?:sk-[a-z0-9_-]{10,}|sb_secret_|service_role\s*[:=]|password\s*[:=]|DAVID_DEVICE_TOKEN\s*=)/i,
-  "Migration must not contain credentials or secrets"
+  "Stage 2 migrations must not contain credentials or secrets"
 );
 
 assert.match(rollbackCompact, /^begin;/);
@@ -123,4 +151,4 @@ assert.doesNotMatch(
   "Rollback must only remove the isolated david_v2 schema"
 );
 
-console.log("DAVID Multi-User v2 Stage 2 schema, isolation and rollback tests: PASS");
+console.log("DAVID Multi-User v2 Stage 2 schema, isolation, indexes and rollback tests: PASS");
