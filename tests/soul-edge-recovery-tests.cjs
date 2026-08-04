@@ -15,7 +15,7 @@ const launcher = fs.readFileSync(repairLauncherPath, "utf8");
 
 assert.match(recovery, /installEdgeSoulRecovery/u);
 assert.match(recovery, /stopDedicatedEdgeProcesses/u);
-assert.match(recovery, /--user-data-dir/u);
+assert.match(recovery, /\$command\.Contains\(\$profile\)/u);
 assert.match(recovery, /--remote-debugging-port/u);
 assert.match(recovery, /Name='msedge\.exe'/u);
 assert.match(recovery, /retry_count:\s*1/u);
