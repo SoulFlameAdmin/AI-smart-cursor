@@ -1,6 +1,6 @@
 # DAVID Multi-User SOUL v2 — Stage 3 Status
 
-Status: `INSTALLED_DISABLED_VERIFIED`
+Status: `LOCKED_VERIFIED_DISABLED`
 
 Stage 3 adds the controlled ownership and RPC layer on top of the locked Stage 2 registry. It does not enable multi-user traffic, provider requests, production provisioning, or Electron v2 routing.
 
@@ -11,15 +11,18 @@ Stage 3 adds the controlled ownership and RPC layer on top of the locked Stage 2
 - v1 rollback branch: `stable/david-soul-chat-v1.0.1`
 - v1 rollback commit: `128a61af7243ef63749a0eaddcdb1a528b2ebadd`
 
-Both stable branches remain unchanged.
+Both earlier stable branches remain unchanged.
 
-## Development checkpoint
+## Stable Stage 3 snapshot
 
-- Branch: `feature/david-multi-user-v2-stage3-ownership`
-- Pull request: `#14` (draft)
-- Verified pre-status head: `9a1faa8fec200d3ec7bc51df328dedc2fa61a737`
+- Stable branch: `stable/david-multi-user-v2-stage3`
+- Source branch: `feature/david-multi-user-v2-stage3-ownership`
+- Pull request: `#14`
+- Pre-lock status commit: `952549fea2e01d37b17697d2ee33793fc96dd3c4`
 - DAVID Baseline run `#103`: success
 - DAVID Baseline run `#106`: success
+- DAVID Baseline run `#107`: success
+- Final lock commit is the head of the stable Stage 3 branch.
 
 ## Supabase migrations
 
@@ -112,6 +115,21 @@ For the new Stage 3 layer:
 - security notices for private tables without direct client policies are intentional where schema access is denied;
 - pre-existing project-wide notices outside Stage 3 were not modified.
 
+## Final live v1 smoke test
+
+The post-migration test `TEST STAGE 3 V1` completed successfully on 2026-08-04:
+
+- queue status: `completed`
+- queue stage: `completed`
+- error: none
+- worker: `david-soul-relay-v3`
+- created: `2026-08-04T00:38:40.218725Z`
+- completed: `2026-08-04T00:38:53.758Z`
+- end-to-end duration: approximately 13.5 seconds
+- answer returned to the same SOUL chat: `TEST STAGE 3 V1 е успешен. DAVID SOUL работи нормално.`
+
+The screenshot supplied by the owner and the production queue record show the same completed flow: SOUL → DAVID Electron → fixed GPT session → SOUL.
+
 ## v1 integrity
 
 - `public.david_soul_messages` still exists;
@@ -123,8 +141,6 @@ For the new Stage 3 layer:
 
 `supabase/rollback/20260804002000_david_multi_user_v2_stage3_ownership_functions_rollback.sql` removes only the Stage 3 functions and owner policies. It preserves the Stage 2 schema and data, and refuses to run while runtime or rollout is enabled.
 
-## Final Stage 3 gate
+## Lock result
 
-Before Stage 3 is locked as a stable snapshot, one post-migration v1 SOUL smoke test must complete successfully:
-
-`TEST STAGE 3 V1`
+Stage 3 is accepted as a stable disabled snapshot. Stage 4 must branch from `stable/david-multi-user-v2-stage3`. The Stage 3 runtime flags remain disabled until a separate rollout stage explicitly enables them.
