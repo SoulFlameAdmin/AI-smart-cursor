@@ -1,23 +1,26 @@
 # DAVID Multi-User SOUL v2 — Stage 2 Status
 
-Status: `INSTALLED_DISABLED_VERIFIED`
+Status: `LOCKED_STABLE_DISABLED`
 
 Stage 2 establishes the private multi-user identity and conversation registry. It does not enable multi-user runtime traffic, model-provider calls, or Electron routing.
 
-## Locked base
+## Stable snapshots
 
-- Base branch: `stable/david-soul-chat-v1.0.1`
-- Base commit: `128a61af7243ef63749a0eaddcdb1a528b2ebadd`
-- v1 release remains locked and unchanged.
+- Locked v1 rollback branch: `stable/david-soul-chat-v1.0.1`
+- Locked v1 rollback commit: `128a61af7243ef63749a0eaddcdb1a528b2ebadd`
+- Locked Stage 2 branch: `stable/david-multi-user-v2-stage2`
+- Development branch: `feature/david-soul-multi-user-v2`
+- Pull request: `#13`
+
+The Stage 2 stable branch is a read-only recovery snapshot. Further work continues from a new development checkpoint and must not rewrite this snapshot.
 
 ## GitHub verification
 
-- Development branch: `feature/david-soul-multi-user-v2`
-- Pull request: `#13` (draft)
 - Stage 2 schema test commit: `6144156facd08b8615d5b098928413efc0b91676`
 - Stage 2 index/test commit: `734eec27d062829b3bd53249db35c0bf41e8aa91`
 - DAVID Baseline run `#98`: success
 - DAVID Baseline run `#100`: success
+- DAVID Baseline run `#101`: success
 
 ## Supabase migrations
 
@@ -32,7 +35,7 @@ Stage 2 establishes the private multi-user identity and conversation registry. I
 - `david_v2.user_consents`
 - `david_v2.soul_threads`
 
-All five tables have RLS and FORCE RLS enabled. Direct schema/table/function access is revoked from `PUBLIC`, `anon`, and `authenticated`. Only trusted server-side service access is granted.
+All five tables have RLS and FORCE RLS enabled. Direct schema, table, and function access is revoked from `PUBLIC`, `anon`, and `authenticated`. Only trusted server-side service access is granted.
 
 ## Runtime lock
 
@@ -55,10 +58,22 @@ The zero-cost transactional rehearsal and the production canary both passed:
 - `anon` and `authenticated` have no `david_v2` schema usage;
 - all seven Stage 2 foreign-key paths have covering indexes.
 
+## Final live v1 smoke test
+
+The post-migration SOUL test passed on 2026-08-04:
+
+- prompt: `TEST STAGE 2 V1`
+- queue status: `completed`
+- error: none
+- answer: `TEST STAGE 2 V1 е успешен. DAVID SOUL работи нормално.`
+- relay version: `david-soul-relay-v2`
+
+This confirms that the installed but disabled Stage 2 schema did not break the locked v1 DAVID SOUL route.
+
 ## v1 integrity verification
 
 - `public.david_soul_messages` still exists;
-- A/B/C/D live tests remain four completed jobs with zero errors;
+- previous A/B/C/D tests and the final Stage 2 smoke test completed without errors;
 - the three protected SOUL worker RPCs remain denied to `anon` and `authenticated` and executable by `service_role`;
 - stable release `david-soul-chat-v1-0-1` remains locked at commit `128a61af7243ef63749a0eaddcdb1a528b2ebadd`.
 
@@ -76,6 +91,6 @@ Pre-existing project-wide security and performance notices outside `david_v2` ar
 
 `supabase/rollback/20260804000100_david_multi_user_v2_identity_registry_rollback.sql` removes only `david_v2` and refuses to run when any v2 runtime flag is enabled.
 
-## Final Stage 2 gate
+## Lock decision
 
-Before Stage 2 is marked locked/stable, run one live v1 SOUL smoke test after these migrations. PR #13 remains draft until that test succeeds.
+Stage 2 is complete, verified, and locked as an installed but disabled foundation. It may be used as the rollback point for Stage 3. No provider traffic, multi-user routing, user provisioning, or Electron v2 connection is active.
