@@ -6,16 +6,18 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const migrationPath = path.join(root, "supabase", "migrations", "20260804004000_david_multi_user_v2_stage4_api_gateway.sql");
+const guardPath = path.join(root, "supabase", "migrations", "20260804004100_david_multi_user_v2_stage4_gateway_twin_guard.sql");
 const rollbackPath = path.join(root, "supabase", "rollback", "20260804004000_david_multi_user_v2_stage4_api_gateway_rollback.sql");
 const functionPath = path.join(root, "supabase", "functions", "david-api-gateway-v2", "index.ts");
 const contractPath = path.join(root, "supabase", "functions", "david-api-gateway-v2", "contract.ts");
 const deploymentPath = path.join(root, "supabase", "functions", "david-api-gateway-v2", "deployment.json");
 
-for (const file of [migrationPath, rollbackPath, functionPath, contractPath, deploymentPath]) {
+for (const file of [migrationPath, guardPath, rollbackPath, functionPath, contractPath, deploymentPath]) {
   assert.ok(fs.existsSync(file), `Missing Stage 4 file: ${path.relative(root, file)}`);
 }
 
 const migration = fs.readFileSync(migrationPath, "utf8");
+const guard = fs.readFileSync(guardPath, "utf8");
 const rollback = fs.readFileSync(rollbackPath, "utf8");
 const edge = fs.readFileSync(functionPath, "utf8");
 const contract = fs.readFileSync(contractPath, "utf8");
@@ -36,6 +38,11 @@ assert.match(migration, /gateway_enabled = false/i);
 assert.match(migration, /provider_calls_enabled', false/i);
 assert.doesNotMatch(migration, /alter table public\.david_soul_messages/i);
 assert.doesNotMatch(migration, /drop table public\./i);
+
+assert.match(guard, /create trigger david_v2_gateway_requests_twin_owner/i);
+assert.match(guard, /when \(new\.twin_id is not null\)/i);
+assert.match(guard, /execute function david_v2\.enforce_twin_owner\(\)/i);
+assert.match(guard, /gateway_enabled = false/i);
 
 assert.match(rollback, /Refusing DAVID v2 Stage 4 rollback while runtime or rollout is enabled/i);
 assert.match(rollback, /Refusing DAVID v2 Stage 4 rollback while gateway request records exist/i);
