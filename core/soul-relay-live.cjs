@@ -146,6 +146,7 @@ class LiveSoulRelay extends SoulRelay {
     if (!this.active || this.busy) return;
     this.busy = true;
     let job = null;
+    let completionCommitted = false;
     const startedAt = Date.now();
 
     try {
@@ -205,6 +206,7 @@ class LiveSoulRelay extends SoulRelay {
         worker: LIVE_RELAY_VERSION,
         answer
       });
+      completionCommitted = true;
 
       this.currentStage = LIVE_STAGES.COMPLETED;
       await this.browser.showReport(
@@ -217,19 +219,39 @@ class LiveSoulRelay extends SoulRelay {
         "ready"
       ).catch(() => {});
 
-      await this.bridge.logEvent("soul_message_completed", {
-        message_id: job.id,
-        conversation_id: job.conversationId || null,
-        answer_chars: answer.length,
-        elapsed_seconds: Math.round((Date.now() - startedAt) / 1000),
-        relay_version: LIVE_RELAY_VERSION
-      });
+      try {
+        await this.bridge.logEvent("soul_message_completed", {
+          message_id: job.id,
+          conversation_id: job.conversationId || null,
+          answer_chars: answer.length,
+          elapsed_seconds: Math.round((Date.now() - startedAt) / 1000),
+          relay_version: LIVE_RELAY_VERSION
+        });
+      } catch (telemetryError) {
+        const telemetryText = String(
+          telemetryError?.message || telemetryError || "telemetry failed"
+        ).slice(0, 300);
+        this.sendStatus(
+          `SOUL отговорът е завършен. Допълнителният telemetry log не се записа: ${telemetryText}`,
+          "warning"
+        );
+      }
 
       this.sendStatus(progressLabel(LIVE_STAGES.COMPLETED), "ready");
     } catch (error) {
       this.stopHeartbeat();
-      this.currentStage = LIVE_STAGES.FAILED;
       const errorText = String(error.message || error).slice(0, 1000);
+
+      if (completionCommitted) {
+        this.currentStage = LIVE_STAGES.COMPLETED;
+        this.sendStatus(
+          `SOUL отговорът вече е завършен. Вторична операция не успя: ${errorText}`,
+          "warning"
+        );
+        return;
+      }
+
+      this.currentStage = LIVE_STAGES.FAILED;
       await this.browser.showReport(LIVE_STAGES.FAILED, errorText, {}, "error").catch(() => {});
 
       if (job?.id) {
