@@ -6,22 +6,31 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const recoveryPath = path.join(root, "core", "edge-soul-recovery-patch.cjs");
+const relayPath = path.join(root, "core", "soul-relay-live.cjs");
 const mainPath = path.join(root, "edge-soul-main.cjs");
 const repairLauncherPath = path.join(root, "REPAIR-AND-START-DAVID-SOUL.ps1");
 
 const recovery = fs.readFileSync(recoveryPath, "utf8");
+const relay = fs.readFileSync(relayPath, "utf8");
 const main = fs.readFileSync(mainPath, "utf8");
 const launcher = fs.readFileSync(repairLauncherPath, "utf8");
 
 assert.match(recovery, /installEdgeSoulRecovery/u);
 assert.match(recovery, /stopDedicatedEdgeProcesses/u);
-assert.match(recovery, /\$command\.Contains\(\$profile\)/u);
+assert.match(recovery, /profileDir/u);
 assert.match(recovery, /--remote-debugging-port/u);
 assert.match(recovery, /Name='msedge\.exe'/u);
 assert.match(recovery, /retry_count:\s*1/u);
 assert.match(recovery, /dedicated_edge_only:\s*true/u);
 assert.doesNotMatch(recovery, /taskkill\s+\/IM\s+msedge\.exe/u);
 assert.doesNotMatch(recovery, /Stop-Process\s+-Name\s+(?:msedge|MicrosoftEdge)/u);
+
+assert.match(relay, /let completionCommitted = false/u);
+assert.match(relay, /completionCommitted = true/u);
+assert.match(relay, /catch \(telemetryError\)/u);
+assert.match(relay, /Допълнителният telemetry log не се записа/u);
+assert.match(relay, /if \(completionCommitted\)/u);
+assert.match(relay, /SOUL отговорът вече е завършен/u);
 
 assert.match(main, /require\("\.\/core\/edge-soul-recovery-patch\.cjs"\)/u);
 assert.match(main, /installEdgeSoulRecovery\(\)/u);
@@ -35,4 +44,4 @@ assert.match(launcher, /New-Item -ItemType Directory/u);
 assert.match(launcher, /stopped normally/u);
 assert.doesNotMatch(launcher, /ResetEdgeProfile/u);
 
-console.log("DAVID SOUL dedicated Edge recovery and repair launcher tests: PASS");
+console.log("DAVID SOUL Edge recovery and completed-response resilience tests: PASS");
