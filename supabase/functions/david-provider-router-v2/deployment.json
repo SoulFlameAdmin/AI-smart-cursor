@@ -1,0 +1,11 @@
+{
+  "slug": "david-provider-router-v2",
+  "version": 1,
+  "verify_jwt": true,
+  "deployed": false,
+  "provider_calls_enabled": false,
+  "browser_origins_configured": false,
+  "account_isolation_key": "auth.uid",
+  "provider_keys_server_only": true,
+  "private_chat_urls_stored": false
+}
