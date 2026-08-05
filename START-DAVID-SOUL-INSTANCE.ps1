@@ -243,6 +243,8 @@ $browserVisible = Get-ConfigValue -Name 'DAVID_SOUL_BROWSER_VISIBLE'
 if ($browserVisible) { Set-ProcessConfig -Name 'DAVID_SOUL_BROWSER_VISIBLE' -Value $browserVisible }
 
 $electronArguments = @(
+  '--disable-gpu',
+  '--disable-gpu-compositing',
   "--user-data-dir=$workerData",
   "--disk-cache-dir=$workerCache",
   "--david-soul-instance=$instance",
@@ -255,6 +257,7 @@ Write-Host '============================================================' -Foreg
 Write-Host "  Port       : 127.0.0.1:$debugPort"
 Write-Host "  Edge data  : $edgeProfile"
 Write-Host "  SOUL route : isolated user + fixed chat"
+Write-Host '  Renderer   : stable software mode (Electron GPU disabled)'
 Write-Host '  Secrets    : loaded locally and not printed'
 Write-Host '============================================================' -ForegroundColor Cyan
 
