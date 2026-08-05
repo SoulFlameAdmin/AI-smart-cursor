@@ -26,9 +26,16 @@ assert.match(instance, /david-soul\.pid/u);
 
 assert.match(mitko, /InstanceName 'mitko'/u);
 assert.match(mitko, /PreferredDebugPort 9333/u);
+assert.match(mitko, /\.david-system\\edge-soul-profile/u);
+assert.match(mitko, /\.david-instances\\mitko/u);
+assert.match(mitko, /Copy-Item -LiteralPath \$legacyProfile -Destination \$mitkoProfile/u);
+assert.match(mitko, /saved ChatGPT Edge profile was copied/u);
+
 assert.match(borko, /InstanceName 'borko'/u);
 assert.match(borko, /PreferredDebugPort 9444/u);
 assert.match(borko, /\.david-instances\\borko/u);
+assert.match(borko, /pair_routed_device/u);
+assert.match(borko, /DAVID-BORKO-01/u);
 
 assert.match(both, /START-MITKO-DAVID-SOUL\.ps1/u);
 assert.match(both, /START-BORKO-DAVID-SOUL\.ps1/u);
@@ -44,4 +51,4 @@ assert.match(main, /isolated Edge -> fixed GPT chat/u);
 assert.doesNotMatch(instance, /chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(both, /DAVID_DEVICE_TOKEN/u);
 
-console.log("DAVID SOUL dual-instance isolation tests: PASS");
+console.log("DAVID SOUL dual-instance isolation and profile migration tests: PASS");
