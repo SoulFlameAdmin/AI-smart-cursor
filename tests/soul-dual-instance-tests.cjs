@@ -23,6 +23,9 @@ assert.match(instance, /edge-soul-profile/u);
 assert.match(instance, /electron-worker-data/u);
 assert.match(instance, /soul-status\.json/u);
 assert.match(instance, /david-soul\.pid/u);
+assert.match(instance, /'--disable-gpu'/u);
+assert.match(instance, /'--disable-gpu-compositing'/u);
+assert.match(instance, /stable software mode/u);
 
 assert.match(mitko, /InstanceName 'mitko'/u);
 assert.match(mitko, /PreferredDebugPort 9333/u);
@@ -45,6 +48,9 @@ assert.match(both, /System\.Collections\.Generic\.List\[string\]/u);
 assert.doesNotMatch(both, /Get-Command (?:powershell|pwsh)\.exe/u);
 assert.doesNotMatch(both, /\)\.Source/u);
 
+assert.match(main, /app\.disableHardwareAcceleration\(\)/u);
+assert.match(main, /app\.commandLine\.appendSwitch\("disable-gpu"\)/u);
+assert.match(main, /app\.commandLine\.appendSwitch\("disable-gpu-compositing"\)/u);
 assert.match(main, /const multiInstance = process\.env\.DAVID_SOUL_MULTI_INSTANCE === "1"/u);
 assert.match(main, /multiInstance\s*\?\s*true\s*:\s*app\.requestSingleInstanceLock/u);
 assert.match(main, /instance_id: instanceId/u);
@@ -53,4 +59,4 @@ assert.match(main, /isolated Edge -> fixed GPT chat/u);
 assert.doesNotMatch(instance, /chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(both, /DAVID_DEVICE_TOKEN/u);
 
-console.log("DAVID SOUL dual-instance isolation, profile migration and strict PowerShell resolution tests: PASS");
+console.log("DAVID SOUL dual-instance isolation, profile migration, strict PowerShell resolution and GPU-stability tests: PASS");
