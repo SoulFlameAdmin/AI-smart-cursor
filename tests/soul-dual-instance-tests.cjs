@@ -51,6 +51,11 @@ assert.doesNotMatch(both, /\)\.Source/u);
 assert.match(main, /app\.disableHardwareAcceleration\(\)/u);
 assert.match(main, /app\.commandLine\.appendSwitch\("disable-gpu"\)/u);
 assert.match(main, /app\.commandLine\.appendSwitch\("disable-gpu-compositing"\)/u);
+assert.match(main, /app\.commandLine\.appendSwitch\("disable-audio-output"\)/u);
+assert.match(main, /app\.commandLine\.appendSwitch\("mute-audio"\)/u);
+assert.match(main, /AudioServiceOutOfProcess/u);
+assert.match(main, /HardwareMediaKeyHandling/u);
+assert.match(main, /MediaSessionService/u);
 assert.match(main, /const multiInstance = process\.env\.DAVID_SOUL_MULTI_INSTANCE === "1"/u);
 assert.match(main, /multiInstance\s*\?\s*true\s*:\s*app\.requestSingleInstanceLock/u);
 assert.match(main, /instance_id: instanceId/u);
@@ -59,4 +64,4 @@ assert.match(main, /isolated Edge -> fixed GPT chat/u);
 assert.doesNotMatch(instance, /chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(both, /DAVID_DEVICE_TOKEN/u);
 
-console.log("DAVID SOUL dual-instance isolation, profile migration, strict PowerShell resolution and GPU-stability tests: PASS");
+console.log("DAVID SOUL dual-instance isolation, profile migration, strict PowerShell resolution and GPU/audio stability tests: PASS");
