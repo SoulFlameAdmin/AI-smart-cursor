@@ -18,13 +18,36 @@ const {
 } = require("./core/edge-soul-recovery-patch.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
+// DAVID SOUL uses Microsoft Edge for the visible GPT session. The Electron
+// process is only a background coordinator, so GPU and audio devices are not
+// required. Disabling both before app readiness prevents Windows GPU/audio
+// crash loops when several isolated workers run at the same time.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-gpu-compositing");
+app.commandLine.appendSwitch("disable-audio-output");
+app.commandLine.appendSwitch("mute-audio");
+app.commandLine.appendSwitch(
+  "disable-features",
+  "AudioServiceOutOfProcess,HardwareMediaKeyHandling,MediaSessionService"
+);
+
 installPersistentSoulSession();
 installReliableSoulSendConfirmation();
 installEdgeSoulRecovery();
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock({ mode: "soul" });
+const instanceId = String(process.env.DAVID_SOUL_INSTANCE_ID || "default")
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, "-")
+  .slice(0, 80) || "default";
+const multiInstance = process.env.DAVID_SOUL_MULTI_INSTANCE === "1";
+const gotSingleInstanceLock = multiInstance
+  ? true
+  : app.requestSingleInstanceLock({ mode: "soul", instance_id: instanceId });
+
 if (!gotSingleInstanceLock) {
-  console.error("DAVID SOUL Edge worker is already running.");
+  console.error(`DAVID SOUL Edge worker '${instanceId}' is already running.`);
   app.quit();
 }
 
@@ -79,6 +102,8 @@ function writeStatus(state, message, kind = "info", meta = {}) {
 
   const payload = {
     mode: "soul",
+    instance_id: instanceId,
+    multi_instance: multiInstance,
     transport: "twins-supabase-edge",
     state: clean(state, 80),
     kind: clean(kind, 40),
@@ -124,7 +149,7 @@ function sendStatus(message, kind = "info", meta = {}) {
   const now = Date.now();
 
   if (signature !== lastConsoleStatusSignature || now - lastConsoleStatusAt > 750) {
-    console.log(`[DAVID SOUL EDGE][${normalizedKind.toUpperCase()}] ${text}`);
+    console.log(`[DAVID SOUL EDGE][${instanceId.toUpperCase()}][${normalizedKind.toUpperCase()}] ${text}`);
     lastConsoleStatusSignature = signature;
     lastConsoleStatusAt = now;
   }
@@ -138,7 +163,7 @@ async function boot() {
 
   writeStatus(
     "starting",
-    "DAVID is switching from the local Teacher loop to SOUL mode for the Twins site.",
+    `DAVID instance '${instanceId}' is switching to SOUL mode.`,
     "working",
     { stage: "mode_switch" }
   );
@@ -152,17 +177,16 @@ async function boot() {
 
   writeStatus(
     "opening_gpt",
-    "DAVID is loading the saved ChatGPT login and the one fixed SOUL session.",
+    `DAVID instance '${instanceId}' is loading its saved ChatGPT login and fixed session.`,
     "working",
     { stage: "loading_saved_login" }
   );
 
-  // Critical ordering: do not claim a message from Twins until GPT is ready.
   await relay.browser.openIfNeeded(chatUrl);
 
   writeStatus(
     "gpt_ready",
-    "The saved ChatGPT login and fixed GPT session are ready. DAVID is now activating the Twins SOUL queue.",
+    `DAVID instance '${instanceId}' has its own saved login and fixed GPT session ready.`,
     "ready",
     { stage: "gpt_ready" }
   );
@@ -170,25 +194,27 @@ async function boot() {
   await relay.start();
 
   sendStatus(
-    "DAVID SOUL mode is active: Twins -> DAVID Edge -> GPT -> Twins.",
+    `DAVID SOUL instance '${instanceId}' is active: Twins -> isolated Edge -> fixed GPT chat -> Twins.`,
     "ready",
     { stage: "relay_ready" }
   );
 }
 
-app.on("second-instance", () => {
-  sendStatus(
-    "A second SOUL start was blocked because the DAVID SOUL worker is already running.",
-    "warning",
-    { stage: "single_instance" }
-  );
-});
+if (!multiInstance) {
+  app.on("second-instance", () => {
+    sendStatus(
+      "A second SOUL start was blocked because this DAVID SOUL worker is already running.",
+      "warning",
+      { stage: "single_instance" }
+    );
+  });
+}
 
 app.on("before-quit", () => {
   isQuitting = true;
   writeStatus(
     "stopping",
-    "DAVID SOUL mode is stopping. The saved Edge login profile is kept.",
+    `DAVID instance '${instanceId}' is stopping. Its saved Edge profile is kept.`,
     "warning",
     { stage: "stopping" }
   );
@@ -202,7 +228,7 @@ app.on("window-all-closed", () => {
 
 app.whenReady().then(boot).catch((error) => {
   const message = clean(error?.message || error, 4000) || "DAVID SOUL Edge relay failed to start.";
-  console.error("DAVID SOUL Edge startup failed:", error);
+  console.error(`DAVID SOUL Edge startup failed for '${instanceId}':`, error);
   writeStatus(
     "error",
     message,
@@ -212,8 +238,8 @@ app.whenReady().then(boot).catch((error) => {
 
   if (process.env.DAVID_SOUL_SHOW_ERROR_DIALOG === "1") {
     dialog.showErrorBox(
-      "DAVID SOUL Edge relay did not start",
-      `${message}\n\nTeacher mode was not started. Check david-soul-error.log.`
+      `DAVID SOUL '${instanceId}' did not start`,
+      `${message}\n\nCheck the isolated instance error log.`
     );
   }
 

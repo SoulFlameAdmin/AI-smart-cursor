@@ -1,12 +1,13 @@
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)]
   [ValidatePattern('^https://chatgpt\.com/c/[A-Za-z0-9-]+(?:[/?#].*)?$')]
-  [string]$ChatUrl,
+  [string]$ChatUrl = '',
 
   [string]$SoulUserId = '1208679e-4466-475b-8a33-3d3f7e9184f3',
 
-  [switch]$RunTests
+  [switch]$ConfigureOnly,
+  [switch]$RunTests,
+  [switch]$OpenTwins
 )
 
 Set-StrictMode -Version Latest
@@ -15,75 +16,152 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $root
 
-$envPath = Join-Path $root '.env'
-$systemRoot = Join-Path $root '.david-system'
-$backupRoot = Join-Path $systemRoot 'config-backups'
-$repairLauncher = Join-Path $root 'REPAIR-AND-START-DAVID-SOUL.ps1'
+$baseEnv = Join-Path $root '.env'
+$instanceRoot = Join-Path $root '.david-instances\borko'
+$instanceEnv = Join-Path $instanceRoot 'instance.env'
+$launcher = Join-Path $root 'START-DAVID-SOUL-INSTANCE.ps1'
+$deviceName = 'DAVID-BORKO-01'
 
-if (-not (Test-Path -LiteralPath $envPath)) {
-  throw 'Missing local .env file. Nothing was changed.'
+function Read-EnvMap {
+  param([string]$Path)
+  $map = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return $map }
+
+  foreach ($line in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+    if ($line -match '^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
+      $name = $Matches[1]
+      $value = $Matches[2].Trim()
+      if (
+        ($value.StartsWith('"') -and $value.EndsWith('"')) -or
+        ($value.StartsWith("'") -and $value.EndsWith("'"))
+      ) {
+        $value = $value.Substring(1, $value.Length - 2)
+      }
+      $map[$name] = $value
+    }
+  }
+  return $map
 }
-if (-not (Test-Path -LiteralPath $repairLauncher)) {
-  throw 'Missing REPAIR-AND-START-DAVID-SOUL.ps1. Update the DAVID hotfix branch first.'
+
+function New-DeviceToken {
+  $bytes = New-Object byte[] 48
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  return [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Get-Sha256Hex {
+  param([Parameter(Mandatory = $true)][string]$Value)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Value)
+    $hash = $sha.ComputeHash($bytes)
+    return (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+  } finally {
+    $sha.Dispose()
+  }
+}
+
+function Save-InstanceConfig {
+  param(
+    [Parameter(Mandatory = $true)][string]$FixedChatUrl,
+    [Parameter(Mandatory = $true)][string]$DeviceToken
+  )
+
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  $lines = @(
+    "DAVID_SOUL_USER_ID=$SoulUserId",
+    "DAVID_SOUL_CHAT_URL=$FixedChatUrl",
+    "DAVID_DEVICE_TOKEN=$DeviceToken"
+  )
+  [System.IO.File]::WriteAllLines($instanceEnv, $lines, $utf8)
+}
+
+if (-not (Test-Path -LiteralPath $baseEnv)) {
+  throw 'Missing base .env file.'
+}
+if (-not (Test-Path -LiteralPath $launcher)) {
+  throw 'Missing START-DAVID-SOUL-INSTANCE.ps1.'
 }
 if ($SoulUserId -notmatch '^[0-9a-fA-F-]{36}$') {
   throw 'SoulUserId must be a UUID.'
 }
 
-New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$backupPath = Join-Path $backupRoot ".env.before-borko-$timestamp"
-Copy-Item -LiteralPath $envPath -Destination $backupPath -Force
+New-Item -ItemType Directory -Force -Path $instanceRoot | Out-Null
 
-function Set-LocalEnvValue {
-  param(
-    [Parameter(Mandatory = $true)][string]$Name,
-    [Parameter(Mandatory = $true)][string]$Value
-  )
+$baseConfig = Read-EnvMap -Path $baseEnv
+$instanceConfig = Read-EnvMap -Path $instanceEnv
+$fixedChatUrl = if ($ChatUrl) { $ChatUrl } elseif ($instanceConfig.ContainsKey('DAVID_SOUL_CHAT_URL')) {
+  [string]$instanceConfig['DAVID_SOUL_CHAT_URL']
+} else { '' }
 
-  $lines = @(Get-Content -LiteralPath $envPath -Encoding UTF8)
-  $pattern = "^\s*(?:export\s+)?$([Regex]::Escape($Name))\s*="
-  $replacement = "$Name=$Value"
-  $found = $false
+if ($fixedChatUrl -notmatch '^https://chatgpt\.com/c/[A-Za-z0-9-]+(?:[/?#].*)?$') {
+  throw 'Borko is not configured. Run once with -ChatUrl using his fixed ChatGPT conversation URL.'
+}
 
-  for ($index = 0; $index -lt $lines.Count; $index++) {
-    if ($lines[$index] -match $pattern) {
-      $lines[$index] = $replacement
-      $found = $true
+$borkoDeviceToken = if ($instanceConfig.ContainsKey('DAVID_DEVICE_TOKEN')) {
+  [string]$instanceConfig['DAVID_DEVICE_TOKEN']
+} else { '' }
+
+if (-not $borkoDeviceToken -or $borkoDeviceToken.Length -lt 32) {
+  $supabaseUrl = if ($baseConfig.ContainsKey('SUPABASE_URL')) { [string]$baseConfig['SUPABASE_URL'] } else { '' }
+  $primaryToken = if ($baseConfig.ContainsKey('DAVID_DEVICE_TOKEN')) { [string]$baseConfig['DAVID_DEVICE_TOKEN'] } else { '' }
+  $bridgeFunction = if ($baseConfig.ContainsKey('DAVID_DEVICE_BRIDGE_FUNCTION')) {
+    [string]$baseConfig['DAVID_DEVICE_BRIDGE_FUNCTION']
+  } else { 'david-soul-bridge' }
+
+  if (-not $supabaseUrl) { throw 'SUPABASE_URL is missing from the base .env.' }
+  if (-not $primaryToken -or $primaryToken.Length -lt 32) {
+    throw 'The primary DAVID device credential is unavailable for one-time Borko pairing.'
+  }
+
+  $newToken = New-DeviceToken
+  $newTokenHash = Get-Sha256Hex -Value $newToken
+  $bridgeUrl = "$($supabaseUrl.TrimEnd('/'))/functions/v1/$bridgeFunction"
+  $requestBody = @{
+    op = 'pair_routed_device'
+    payload = @{
+      user_id = $SoulUserId
+      device_name = $deviceName
+      token_hash = $newTokenHash
     }
+  } | ConvertTo-Json -Depth 6 -Compress
+
+  Write-Host 'Pairing a separate BORKO device credential. Secret values are not printed.' -ForegroundColor Cyan
+  $response = Invoke-RestMethod `
+    -Method Post `
+    -Uri $bridgeUrl `
+    -Headers @{ 'x-david-device-token' = $primaryToken } `
+    -ContentType 'application/json' `
+    -Body $requestBody
+
+  if (-not $response.ok -or -not $response.paired) {
+    throw 'The server did not approve the isolated BORKO device pairing.'
   }
 
-  if (-not $found) {
-    $lines += $replacement
-  }
-
-  $utf8 = New-Object System.Text.UTF8Encoding($false)
-  [System.IO.File]::WriteAllLines($envPath, $lines, $utf8)
+  $borkoDeviceToken = $newToken
+  Save-InstanceConfig -FixedChatUrl $fixedChatUrl -DeviceToken $borkoDeviceToken
+  Write-Host 'BORKO now has a separate device credential. The temporary shared route was disabled.' -ForegroundColor Green
+} elseif ($ChatUrl) {
+  Save-InstanceConfig -FixedChatUrl $fixedChatUrl -DeviceToken $borkoDeviceToken
+  Write-Host 'BORKO fixed GPT chat was updated without changing his device credential.' -ForegroundColor Green
 }
 
-try {
-  Set-LocalEnvValue -Name 'DAVID_SOUL_CHAT_URL' -Value $ChatUrl
-  Set-LocalEnvValue -Name 'DAVID_SOUL_USER_ID' -Value $SoulUserId
+if ($ConfigureOnly) { return }
 
-  Write-Host '============================================================' -ForegroundColor Cyan
-  Write-Host '  DAVID SOUL - BORKO FIXED CHAT' -ForegroundColor Cyan
-  Write-Host '============================================================' -ForegroundColor Cyan
-  Write-Host '  User route : Borko SOUL identity' -ForegroundColor DarkCyan
-  Write-Host '  GPT route  : private URL supplied only to this local run' -ForegroundColor DarkCyan
-  Write-Host '  Progress   : received -> opening -> sending -> thinking -> returned' -ForegroundColor DarkCyan
-  Write-Host '  Tests      : verified in GitHub CI; skipped locally for fast startup' -ForegroundColor DarkCyan
-  Write-Host '============================================================' -ForegroundColor Cyan
-  Write-Host ''
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host '  BORKO DAVID - ISOLATED SERVER' -ForegroundColor Cyan
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host '  Storage    : .david-instances\borko' -ForegroundColor DarkCyan
+Write-Host '  Port       : starts from 9444' -ForegroundColor DarkCyan
+Write-Host '  Profile    : separate saved ChatGPT login' -ForegroundColor DarkCyan
+Write-Host '  Credential : separate BORKO device token' -ForegroundColor DarkCyan
+Write-Host '  Queue      : only Borko SOUL messages' -ForegroundColor DarkCyan
+Write-Host '============================================================' -ForegroundColor Cyan
 
-  if ($RunTests) {
-    & $repairLauncher
-  } else {
-    & $repairLauncher -SkipTests
-  }
-}
-finally {
-  if (Test-Path -LiteralPath $backupPath) {
-    Copy-Item -LiteralPath $backupPath -Destination $envPath -Force
-    Write-Host 'Previous DAVID local configuration was restored.' -ForegroundColor Green
-  }
-}
+& $launcher `
+  -InstanceName 'borko' `
+  -InstanceEnvFile $instanceEnv `
+  -PreferredDebugPort 9444 `
+  -RunTests:$RunTests `
+  -OpenTwins:$OpenTwins

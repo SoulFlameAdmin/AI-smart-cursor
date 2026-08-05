@@ -17,11 +17,22 @@ const launcher = fs.readFileSync(repairLauncherPath, "utf8");
 
 assert.match(recovery, /installEdgeSoulRecovery/u);
 assert.match(recovery, /stopDedicatedEdgeProcesses/u);
+assert.match(recovery, /findPowerShellExecutable/u);
+assert.match(recovery, /process\.env\.SystemRoot/u);
+assert.match(recovery, /System32/u);
+assert.match(recovery, /WindowsPowerShell/u);
 assert.match(recovery, /profileDir/u);
 assert.match(recovery, /--remote-debugging-port/u);
 assert.match(recovery, /Name='msedge\.exe'/u);
+assert.match(recovery, /SingletonCookie/u);
+assert.match(recovery, /SingletonLock/u);
+assert.match(recovery, /SingletonSocket/u);
+assert.match(recovery, /DevToolsActivePort/u);
+assert.match(recovery, /stale_profile_lock_cleanup:\s*true/u);
+assert.match(recovery, /path_independent_powershell:\s*true/u);
 assert.match(recovery, /retry_count:\s*1/u);
 assert.match(recovery, /dedicated_edge_only:\s*true/u);
+assert.doesNotMatch(recovery, /spawnSync\(\s*["']powershell\.exe["']/u);
 assert.doesNotMatch(recovery, /taskkill\s+\/IM\s+msedge\.exe/u);
 assert.doesNotMatch(recovery, /Stop-Process\s+-Name\s+(?:msedge|MicrosoftEdge)/u);
 
@@ -44,4 +55,4 @@ assert.match(launcher, /New-Item -ItemType Directory/u);
 assert.match(launcher, /stopped normally/u);
 assert.doesNotMatch(launcher, /ResetEdgeProfile/u);
 
-console.log("DAVID SOUL Edge recovery and completed-response resilience tests: PASS");
+console.log("DAVID SOUL Edge recovery, PATH-independent PowerShell and completed-response resilience tests: PASS");
