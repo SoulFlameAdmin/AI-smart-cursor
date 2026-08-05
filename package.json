@@ -7,8 +7,9 @@
   "scripts": {
     "start": "electron .",
     "start:soul": "electron edge-soul-main.cjs",
+    "start:soul:light": "node david-soul-node-coordinator.cjs",
     "dev": "cross-env DAVID_DEV=1 electron .",
-    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs && node tests/soul-send-confirm-tests.cjs && node tests/soul-edge-recovery-tests.cjs && node tests/borko-soul-launcher-tests.cjs && node tests/soul-dual-instance-tests.cjs && node --check soul-main.cjs && node --check edge-soul-main.cjs && node --check core/edge-cdp-soul-browser.cjs && node --check core/edge-soul-persistent-session.cjs && node --check core/edge-soul-send-confirm-patch.cjs && node --check core/edge-soul-recovery-patch.cjs",
+    "test": "node tests/run-tests.cjs && node tests/soul-live-relay-tests.cjs && node tests/soul-send-confirm-tests.cjs && node tests/soul-edge-recovery-tests.cjs && node tests/borko-soul-launcher-tests.cjs && node tests/soul-dual-instance-tests.cjs && node tests/soul-node-coordinator-tests.cjs && node --check soul-main.cjs && node --check edge-soul-main.cjs && node --check david-soul-node-coordinator.cjs && node --check core/edge-cdp-soul-browser.cjs && node --check core/edge-soul-persistent-session.cjs && node --check core/edge-soul-send-confirm-patch.cjs && node --check core/edge-soul-recovery-patch.cjs",
     "dist:win": "electron-builder --win nsis",
     "pack:win": "electron-builder --win dir"
   },
@@ -29,6 +30,7 @@
       "main.cjs",
       "soul-main.cjs",
       "edge-soul-main.cjs",
+      "david-soul-node-coordinator.cjs",
       "preload.cjs",
       "core/**/*",
       "renderer/**/*",
