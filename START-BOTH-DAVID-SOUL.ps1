@@ -27,7 +27,33 @@ if (-not (Test-Path -LiteralPath $borkoInstanceEnv)) {
   throw 'Borko is not configured. Run START-BOTH-DAVID-SOUL.ps1 once with -BorkoChatUrl.'
 }
 
-$powerShellExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+function Find-PowerShellExecutable {
+  $currentProcessPath = ''
+  try {
+    $currentProcessPath = (Get-Process -Id $PID -ErrorAction Stop).Path
+  } catch {}
+
+  $candidates = @(
+    $currentProcessPath,
+    (Join-Path $PSHOME 'powershell.exe'),
+    (Join-Path $PSHOME 'pwsh.exe'),
+    (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'),
+    (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'),
+    (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source,
+    (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
+  ) | Where-Object {
+    $_ -and (Test-Path -LiteralPath $_)
+  } | Select-Object -Unique
+
+  $resolved = $candidates | Select-Object -First 1
+  if (-not $resolved) {
+    throw 'PowerShell executable was not found. Windows PowerShell or PowerShell 7 is required.'
+  }
+
+  return $resolved
+}
+
+$powerShellExe = Find-PowerShellExecutable
 $testArgument = if ($RunTests) { ' -RunTests' } else { '' }
 
 $mitkoArguments = "-NoExit -ExecutionPolicy Bypass -File `"$mitkoLauncher`" -OpenTwins$testArgument"
@@ -40,13 +66,14 @@ $borkoProcess = Start-Process -FilePath $powerShellExe -ArgumentList $borkoArgum
 Write-Host '============================================================' -ForegroundColor Green
 Write-Host '  TWO DAVID SOUL SERVERS STARTED' -ForegroundColor Green
 Write-Host '============================================================' -ForegroundColor Green
-Write-Host "  MITKO launcher window PID : $($mitkoProcess.Id)"
-Write-Host '  MITKO Edge port starts at : 9333'
-Write-Host '  MITKO storage             : .david-instances\mitko'
+Write-Host "  PowerShell executable       : $powerShellExe"
+Write-Host "  MITKO launcher window PID   : $($mitkoProcess.Id)"
+Write-Host '  MITKO Edge port starts at   : 9333'
+Write-Host '  MITKO storage               : .david-instances\mitko'
 Write-Host ''
-Write-Host "  BORKO launcher window PID : $($borkoProcess.Id)"
-Write-Host '  BORKO Edge port starts at : 9444'
-Write-Host '  BORKO storage             : .david-instances\borko'
+Write-Host "  BORKO launcher window PID   : $($borkoProcess.Id)"
+Write-Host '  BORKO Edge port starts at   : 9444'
+Write-Host '  BORKO storage               : .david-instances\borko'
 Write-Host ''
 Write-Host '  Each server has its own worker, queue owner, Edge profile and fixed GPT chat.'
 Write-Host '  Closing or stopping one server does not stop the other.'
