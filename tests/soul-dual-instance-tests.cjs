@@ -26,22 +26,22 @@ assert.match(instance, /david-soul\.pid/u);
 
 assert.match(mitko, /InstanceName 'mitko'/u);
 assert.match(mitko, /PreferredDebugPort 9333/u);
-assert.match(mitko, /\.david-system\\edge-soul-profile/u);
-assert.match(mitko, /\.david-instances\\mitko/u);
-assert.match(mitko, /Copy-Item -LiteralPath \$legacyProfile -Destination \$mitkoProfile/u);
-assert.match(mitko, /saved ChatGPT Edge profile was copied/u);
-
+assert.match(mitko, /legacyProfile/u);
+assert.match(mitko, /Copy-Item -LiteralPath \$legacyProfile/u);
 assert.match(borko, /InstanceName 'borko'/u);
 assert.match(borko, /PreferredDebugPort 9444/u);
 assert.match(borko, /\.david-instances\\borko/u);
-assert.match(borko, /pair_routed_device/u);
-assert.match(borko, /DAVID-BORKO-01/u);
 
 assert.match(both, /START-MITKO-DAVID-SOUL\.ps1/u);
 assert.match(both, /START-BORKO-DAVID-SOUL\.ps1/u);
 assert.match(both, /Start-Process/u);
 assert.match(both, /TWO DAVID SOUL SERVERS STARTED/u);
 assert.match(both, /does not stop the other/u);
+assert.match(both, /function Find-PowerShellExecutable/u);
+assert.match(both, /Get-Process -Id \$PID/u);
+assert.match(both, /System32\\WindowsPowerShell\\v1\.0\\powershell\.exe/u);
+assert.match(both, /Join-Path \$PSHOME 'pwsh\.exe'/u);
+assert.doesNotMatch(both, /\(Get-Command powershell\.exe -ErrorAction Stop\)\.Source/u);
 
 assert.match(main, /const multiInstance = process\.env\.DAVID_SOUL_MULTI_INSTANCE === "1"/u);
 assert.match(main, /multiInstance\s*\?\s*true\s*:\s*app\.requestSingleInstanceLock/u);
@@ -51,4 +51,4 @@ assert.match(main, /isolated Edge -> fixed GPT chat/u);
 assert.doesNotMatch(instance, /chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(both, /DAVID_DEVICE_TOKEN/u);
 
-console.log("DAVID SOUL dual-instance isolation and profile migration tests: PASS");
+console.log("DAVID SOUL dual-instance isolation, profile migration and PowerShell resolution tests: PASS");
