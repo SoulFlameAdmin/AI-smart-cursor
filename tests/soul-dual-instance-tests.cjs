@@ -41,7 +41,9 @@ assert.match(both, /function Find-PowerShellExecutable/u);
 assert.match(both, /Get-Process -Id \$PID/u);
 assert.match(both, /System32\\WindowsPowerShell\\v1\.0\\powershell\.exe/u);
 assert.match(both, /Join-Path \$PSHOME 'pwsh\.exe'/u);
-assert.doesNotMatch(both, /\(Get-Command powershell\.exe -ErrorAction Stop\)\.Source/u);
+assert.match(both, /System\.Collections\.Generic\.List\[string\]/u);
+assert.doesNotMatch(both, /Get-Command (?:powershell|pwsh)\.exe/u);
+assert.doesNotMatch(both, /\)\.Source/u);
 
 assert.match(main, /const multiInstance = process\.env\.DAVID_SOUL_MULTI_INSTANCE === "1"/u);
 assert.match(main, /multiInstance\s*\?\s*true\s*:\s*app\.requestSingleInstanceLock/u);
@@ -51,4 +53,4 @@ assert.match(main, /isolated Edge -> fixed GPT chat/u);
 assert.doesNotMatch(instance, /chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(both, /DAVID_DEVICE_TOKEN/u);
 
-console.log("DAVID SOUL dual-instance isolation, profile migration and PowerShell resolution tests: PASS");
+console.log("DAVID SOUL dual-instance isolation, profile migration and strict PowerShell resolution tests: PASS");
