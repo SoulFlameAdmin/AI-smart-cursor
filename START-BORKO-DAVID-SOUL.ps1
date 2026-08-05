@@ -4,7 +4,9 @@ param(
   [ValidatePattern('^https://chatgpt\.com/c/[A-Za-z0-9-]+(?:[/?#].*)?$')]
   [string]$ChatUrl,
 
-  [string]$SoulUserId = '1208679e-4466-475b-8a33-3d3f7e9184f3'
+  [string]$SoulUserId = '1208679e-4466-475b-8a33-3d3f7e9184f3',
+
+  [switch]$RunTests
 )
 
 Set-StrictMode -Version Latest
@@ -69,10 +71,15 @@ try {
   Write-Host '  User route : Borko SOUL identity' -ForegroundColor DarkCyan
   Write-Host '  GPT route  : private URL supplied only to this local run' -ForegroundColor DarkCyan
   Write-Host '  Progress   : received -> opening -> sending -> thinking -> returned' -ForegroundColor DarkCyan
+  Write-Host '  Tests      : verified in GitHub CI; skipped locally for fast startup' -ForegroundColor DarkCyan
   Write-Host '============================================================' -ForegroundColor Cyan
   Write-Host ''
 
-  & $repairLauncher
+  if ($RunTests) {
+    & $repairLauncher
+  } else {
+    & $repairLauncher -SkipTests
+  }
 }
 finally {
   if (Test-Path -LiteralPath $backupPath) {
