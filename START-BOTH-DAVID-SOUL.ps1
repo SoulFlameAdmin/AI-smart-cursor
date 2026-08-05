@@ -28,29 +28,35 @@ if (-not (Test-Path -LiteralPath $borkoInstanceEnv)) {
 }
 
 function Find-PowerShellExecutable {
-  $currentProcessPath = ''
+  $candidates = New-Object System.Collections.Generic.List[string]
+
   try {
-    $currentProcessPath = (Get-Process -Id $PID -ErrorAction Stop).Path
+    $currentProcess = Get-Process -Id $PID -ErrorAction Stop
+    if ($currentProcess.Path) {
+      $candidates.Add([string]$currentProcess.Path)
+    }
   } catch {}
 
-  $candidates = @(
-    $currentProcessPath,
-    (Join-Path $PSHOME 'powershell.exe'),
-    (Join-Path $PSHOME 'pwsh.exe'),
-    (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'),
-    (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'),
-    (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source,
-    (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source
-  ) | Where-Object {
-    $_ -and (Test-Path -LiteralPath $_)
-  } | Select-Object -Unique
-
-  $resolved = $candidates | Select-Object -First 1
-  if (-not $resolved) {
-    throw 'PowerShell executable was not found. Windows PowerShell or PowerShell 7 is required.'
+  if ($PSHOME) {
+    $candidates.Add((Join-Path $PSHOME 'powershell.exe'))
+    $candidates.Add((Join-Path $PSHOME 'pwsh.exe'))
   }
 
-  return $resolved
+  if ($env:SystemRoot) {
+    $candidates.Add((Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'))
+  }
+
+  if ($env:WINDIR) {
+    $candidates.Add((Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'))
+  }
+
+  foreach ($candidate in ($candidates | Select-Object -Unique)) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      return $candidate
+    }
+  }
+
+  throw 'PowerShell executable was not found. Windows PowerShell or PowerShell 7 is required.'
 }
 
 $powerShellExe = Find-PowerShellExecutable
