@@ -16,9 +16,12 @@ assert.match(source, /config-backups/u);
 assert.match(source, /\.env\.before-borko-/u);
 assert.match(source, /Copy-Item -LiteralPath \$backupPath -Destination \$envPath/u);
 assert.match(source, /REPAIR-AND-START-DAVID-SOUL\.ps1/u);
+assert.match(source, /\[switch\]\$RunTests/u);
+assert.match(source, /& \$repairLauncher -SkipTests/u);
+assert.match(source, /verified in GitHub CI; skipped locally for fast startup/u);
 assert.match(source, /Previous DAVID local configuration was restored/u);
 assert.doesNotMatch(source, /https:\/\/chatgpt\.com\/c\/[0-9a-f-]{20,}/iu);
 assert.doesNotMatch(source, /Write-Host[^\n]*\$ChatUrl/u);
 assert.doesNotMatch(source, /DAVID_DEVICE_TOKEN\s*=/u);
 
-console.log("DAVID SOUL Borko private fixed-chat launcher tests: PASS");
+console.log("DAVID SOUL Borko private fixed-chat fast-start launcher tests: PASS");
