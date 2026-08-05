@@ -9,6 +9,10 @@ const migration = fs.readFileSync(
   path.join(root, "supabase", "migrations", "20260805010000_david_multi_user_v2_stage5_account_isolation.sql"),
   "utf8"
 );
+const stage2Migration = fs.readFileSync(
+  path.join(root, "supabase", "migrations", "20260804000100_david_multi_user_v2_identity_registry.sql"),
+  "utf8"
+);
 const rollback = fs.readFileSync(
   path.join(root, "supabase", "rollback", "20260805010000_david_multi_user_v2_stage5_account_isolation_rollback.sql"),
   "utf8"
@@ -36,7 +40,8 @@ assert.match(migration, /create table david_v2\.provider_run_events/u);
 assert.match(migration, /create table david_v2\.provider_usage_daily/u);
 assert.match(migration, /create table david_v2\.device_routes/u);
 assert.match(migration, /create table david_v2\.user_limits/u);
-assert.match(migration, /unique \(user_id, twin_id, provider\)/u);
+assert.match(stage2Migration, /conversations_user_twin_provider_unique unique \(user_id, twin_id, provider\)/u);
+assert.match(migration, /on conflict \(user_id, twin_id, provider\)/u);
 assert.match(migration, /provider_runs_user_message_unique unique \(user_id, client_message_key\)/u);
 assert.match(migration, /foreign key \(conversation_id, identity_id, user_id, twin_id\)/u);
 assert.match(migration, /foreign key \(thread_id, conversation_id, identity_id, user_id, twin_id\)/u);
