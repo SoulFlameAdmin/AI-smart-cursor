@@ -18,6 +18,13 @@ const {
 } = require("./core/edge-soul-recovery-patch.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
+// DAVID SOUL uses Microsoft Edge for the visible GPT session and does not need
+// Electron GPU rendering. Disabling it before app readiness prevents Windows GPU
+// process crash loops when multiple isolated workers run at the same time.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-gpu-compositing");
+
 installPersistentSoulSession();
 installReliableSoulSendConfirmation();
 installEdgeSoulRecovery();
