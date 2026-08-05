@@ -1,6 +1,8 @@
 "use strict";
 
 const { spawnSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 const { EdgeSoulBrowserAgent } = require("./edge-cdp-soul-browser.cjs");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,8 +15,40 @@ function quotePowerShell(value) {
   return `'${String(value || "").replace(/'/g, "''")}'`;
 }
 
+function findPowerShellExecutable() {
+  if (process.platform !== "win32") return "";
+
+  const candidates = [
+    process.env.SystemRoot && path.join(
+      process.env.SystemRoot,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe"
+    ),
+    process.env.WINDIR && path.join(
+      process.env.WINDIR,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe"
+    ),
+    process.env.ProgramFiles && path.join(
+      process.env.ProgramFiles,
+      "PowerShell",
+      "7",
+      "pwsh.exe"
+    )
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "";
+}
+
 function stopDedicatedEdgeProcesses(profileDir, debugPort) {
   if (process.platform !== "win32") return 0;
+
+  const powerShellExe = findPowerShellExecutable();
+  if (!powerShellExe) return 0;
 
   const profile = quotePowerShell(profileDir);
   const port = Number(debugPort) || 9333;
@@ -26,11 +60,17 @@ function stopDedicatedEdgeProcesses(profileDir, debugPort) {
     "  $command.Contains($profile) -or $command.Contains($debugFlag)",
     "})",
     "$matches | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+    "Start-Sleep -Milliseconds 800",
+    "$lockNames = @('SingletonCookie','SingletonLock','SingletonSocket','DevToolsActivePort')",
+    "$lockNames | ForEach-Object {",
+    "  $lockPath = Join-Path $profile $_",
+    "  Remove-Item -LiteralPath $lockPath -Force -Recurse -ErrorAction SilentlyContinue",
+    "}",
     "[Console]::Out.Write($matches.Count)"
   ].join("; ");
 
   const result = spawnSync(
-    "powershell.exe",
+    powerShellExe,
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodePowerShell(script)],
     {
       windowsHide: true,
@@ -71,7 +111,7 @@ function installEdgeSoulRecovery() {
   const prototype = EdgeSoulBrowserAgent.prototype;
   if (prototype.__davidEdgeRecoveryInstalled) {
     return {
-      version: "david-soul-edge-recovery-v1.0.2",
+      version: "david-soul-edge-recovery-v1.0.3",
       installed: true,
       repeated_install: true
     };
@@ -92,6 +132,7 @@ function installEdgeSoulRecovery() {
         "DAVID restarts only its dedicated Microsoft Edge controller and retries once.",
         {
           stopped_processes: stoppedProcesses,
+          stale_profile_locks_removed: true,
           debug_address: `127.0.0.1:${this.port}`
         },
         "warning"
@@ -131,15 +172,18 @@ function installEdgeSoulRecovery() {
   });
 
   return {
-    version: "david-soul-edge-recovery-v1.0.2",
+    version: "david-soul-edge-recovery-v1.0.3",
     installed: true,
     dedicated_edge_only: true,
-    retry_count: 1
+    retry_count: 1,
+    path_independent_powershell: true,
+    stale_profile_lock_cleanup: true
   };
 }
 
 module.exports = {
   encodePowerShell,
+  findPowerShellExecutable,
   installEdgeSoulRecovery,
   isRecoverableConnectionError,
   quotePowerShell,
