@@ -13,10 +13,14 @@ const {
 const {
   installReliableSoulSendConfirmation
 } = require("./core/edge-soul-send-confirm-patch.cjs");
+const {
+  installEdgeSoulInputFallback
+} = require("./core/edge-soul-input-fallback-patch.cjs");
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
 installPersistentSoulSession();
 installReliableSoulSendConfirmation();
+installEdgeSoulInputFallback();
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock({ mode: "soul" });
 if (!gotSingleInstanceLock) {
