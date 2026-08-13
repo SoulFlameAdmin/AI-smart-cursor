@@ -13,6 +13,7 @@ const ALLOWED_ACTIONS = new Set([
   "verify_url_contains",
   "system_click",
   "system_type",
+  "twin_agent_task",
   "notify"
 ]);
 
