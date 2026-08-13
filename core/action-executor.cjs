@@ -42,8 +42,9 @@ class ActionExecutor {
       );
 
       try {
-        await this.executeStep(step);
+        const result = await this.executeStep(step);
         log.status = "success";
+        if (result !== undefined) log.result = result;
         log.finished_at = new Date().toISOString();
       } catch (error) {
         log.status = step.allow_fail ? "skipped" : "failed";
@@ -128,6 +129,9 @@ class ActionExecutor {
         await this.executeNativeType(step);
         return;
 
+      case "twin_agent_task":
+        return this.executeTwinAgentTask(step);
+
       case "notify":
         if (this.Notification.isSupported()) {
           new this.Notification({
@@ -140,6 +144,71 @@ class ActionExecutor {
       default:
         throw new Error(`Неподдържано действие: ${step.action}`);
     }
+  }
+
+  async executeTwinAgentTask(step) {
+    const supabaseUrl = String(process.env.SUPABASE_URL || "")
+      .trim()
+      .replace(/\/+$/, "");
+    const deviceToken = String(process.env.DAVID_DEVICE_TOKEN || "").trim();
+    const agentKey = String(step.agent_key || "").trim().toLowerCase();
+    const prompt = String(step.prompt || step.instruction || "").trim();
+    const taskType = String(step.task_type || "work").trim() || "work";
+    const priorityValue = Number(step.priority ?? 100);
+    const priority = Number.isFinite(priorityValue)
+      ? Math.max(1, Math.min(1000, Math.trunc(priorityValue)))
+      : 100;
+
+    if (!supabaseUrl) {
+      throw new Error("SUPABASE_URL липсва за Twin Agent delegation.");
+    }
+    if (deviceToken.length < 32) {
+      throw new Error("DAVID_DEVICE_TOKEN липсва или е невалиден за Twin Agent delegation.");
+    }
+    if (!/^[a-z0-9][a-z0-9_-]{1,119}$/i.test(agentKey)) {
+      throw new Error("Невалиден Twin Agent key.");
+    }
+    if (!prompt || prompt.length > 90000) {
+      throw new Error("Twin Agent задачата е празна или прекалено дълга.");
+    }
+
+    const endpoint = `${supabaseUrl}/functions/v1/david-twin-agent-bridge`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-david-device-token": deviceToken
+      },
+      body: JSON.stringify({
+        op: "enqueue",
+        payload: {
+          agent_key: agentKey,
+          task_type: taskType,
+          prompt,
+          priority
+        }
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(
+        `Twin Agent bridge отказа задачата (${response.status}): ${String(
+          data?.error || "unknown_error"
+        )}`
+      );
+    }
+
+    this.sendStatus(
+      `DAVID даде задача на ${agentKey} · ${String(data.task_id || "queued")}`,
+      "working"
+    );
+
+    return {
+      task_id: data.task_id,
+      agent_key: agentKey,
+      status: data.status || "queued"
+    };
   }
 
   async openApp(appName) {
