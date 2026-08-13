@@ -87,12 +87,53 @@ function createChatGptTeacherSkill() {
   };
 }
 
+function createBorkoTwinTaskSkill() {
+  return {
+    skill_key: "builtin_borko_twin_task",
+    title: "Дай задача на BORKO Twin",
+    description:
+      "Възлага задача на личния DAVID/Twin Agent на Борко през DAVID Core, без да блокира MITKO DAVID.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "low",
+    matcher: {
+      type: "regex",
+      pattern:
+        "^(?:дай|dai|възложи|vuzlozhi|прати|prati|изпрати|izprati)" +
+        "(?:\\s+(?:задача|zadacha))?\\s+(?:на|na)\\s+" +
+        "(?:борко|borko)(?:\\s+(?:twin|agent|агент|david|дейвид))?" +
+        "\\s*[:,-]?\\s+(.+)$",
+      flags: "iu",
+      variables: ["task"]
+    },
+    steps: [
+      {
+        action: "twin_agent_task",
+        agent_key: "borko-twin",
+        task_type: "work",
+        prompt: "{{task}}",
+        priority: 100
+      },
+      {
+        action: "notify",
+        title: "DAVID Core",
+        text: "Задачата е добавена в опашката на BORKO Twin."
+      }
+    ]
+  };
+}
+
 function getBuiltInSkills() {
-  return [createChatGptTeacherSkill()];
+  return [
+    createChatGptTeacherSkill(),
+    createBorkoTwinTaskSkill()
+  ];
 }
 
 module.exports = {
   DAVID_TEACHER_CHAT_URL,
   createChatGptTeacherSkill,
+  createBorkoTwinTaskSkill,
   getBuiltInSkills
 };
