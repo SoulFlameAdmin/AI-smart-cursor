@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { ensureThinkerRuntime } = require("./david-thinker-runtime-bootstrap.cjs");
 
 const AUTONOMOUS_TRIGGER = /^\s*@sfadmin\b/iu;
 
@@ -135,6 +136,23 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
   }
 
   const root = path.resolve(projectRoot || path.resolve(__dirname, ".."));
+  const thinkerChatUrl = process.env.DAVID_TEACHER_CHAT_URL ||
+    "https://chatgpt.com/c/6a81285a-3e38-83ed-965a-b221453fb742";
+  const thinkerPort = 9444;
+
+  // DAVID_AUTONOMOUS_THINKER_BOOTSTRAP_V1
+  // The Electron-free SOUL runtime owns 9333. Autonomous Teacher rounds still
+  // require the isolated Thinker route on 9444. Make that dependency
+  // self-healing: reuse it when ready, otherwise start the dedicated Node
+  // Thinker keeper and wait for the exact fixed Thinker conversation.
+  await ensureThinkerRuntime({
+    projectRoot: root,
+    sendStatus,
+    nodeExecutable: process.env.DAVID_NODE_EXE || process.execPath,
+    chatUrl: thinkerChatUrl,
+    port: thinkerPort
+  });
+
   const requestRoot = path.join(root, ".david-runtime", "teacher-requests");
   fs.mkdirSync(requestRoot, { recursive: true });
   const id = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
@@ -165,10 +183,8 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
       env: {
         ...process.env,
         DAVID_REPOSITORY_ROOT: root,
-        DAVID_TEACHER_CHAT_URL:
-          process.env.DAVID_TEACHER_CHAT_URL ||
-          "https://chatgpt.com/c/6a81285a-3e38-83ed-965a-b221453fb742",
-        DAVID_TEACHER_EDGE_PORT: "9444"
+        DAVID_TEACHER_CHAT_URL: thinkerChatUrl,
+        DAVID_TEACHER_EDGE_PORT: String(thinkerPort)
       }
     });
 
