@@ -28,7 +28,7 @@ const {
   sameConversation: sameEdgeConversation
 } = require("../core/edge-cdp-soul-browser.cjs");
 
-assert.strictEqual(LIVE_RELAY_VERSION, "david-soul-relay-v3");
+assert.strictEqual(LIVE_RELAY_VERSION, "david-soul-relay-v4-multi-session");
 assert.strictEqual(HEARTBEAT_MS, 5000);
 assert.strictEqual(LIVE_STAGES.RECEIVED, "received");
 assert.strictEqual(LIVE_STAGES.GPT_THINKING, "gpt_thinking");
@@ -161,3 +161,4 @@ assert.match(stopSource, /flush the persistent ChatGPT cookies/u);
 assert.match(stopSource, /login_profile = 'preserved'/u);
 
 console.log("DAVID SOUL mode saved-login, reliable-send, fixed-chat and Twins handoff tests: PASS");
+

@@ -61,6 +61,112 @@ function progressLabel(stage, elapsedSeconds = 0) {
   }
 }
 
+
+// DAVID_SOUL_MEMORY_RETRIEVAL_V17_4
+async function syncSoulMemoryV174(config = {}) {
+  const baseUrl = String(config.supabaseUrl || "").replace(/\/$/, "");
+  const token = String(config.deviceToken || "").trim();
+
+  if (!baseUrl || token.length < 32) {
+    return {
+      ok: false,
+      status: "DAVID_MEMORY_UNAVAILABLE",
+      reason: "not_configured",
+      count: 0,
+      items: []
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/functions/v1/david-memory-bridge`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-david-device-token": token
+        },
+        body: JSON.stringify({
+          op: "sync_context",
+          payload: {
+            limit: 50,
+            include_sensitive: false
+          }
+        }),
+        signal: controller.signal
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(
+        data?.error ||
+        data?.reason ||
+        `DAVID memory bridge HTTP ${response.status}`
+      );
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildSoulMemoryPreambleV174(memoryPayload) {
+  if (
+    !memoryPayload ||
+    memoryPayload.ok !== true ||
+    !Array.isArray(memoryPayload.items) ||
+    memoryPayload.items.length === 0
+  ) {
+    return "";
+  }
+
+  const verified = [];
+  let chars = 0;
+
+  for (const item of memoryPayload.items) {
+    const entry = {
+      record_id: Number(item?.record_id) || null,
+      type: String(item?.type || "fact"),
+      title: item?.title == null ? null : String(item.title),
+      content: String(item?.content || ""),
+      checksum: String(item?.checksum || "")
+    };
+
+    const size = JSON.stringify(entry).length;
+
+    if (verified.length >= 20 || chars + size > 12000) {
+      break;
+    }
+
+    verified.push(entry);
+    chars += size;
+  }
+
+  if (verified.length === 0) {
+    return "";
+  }
+
+  return [
+    "DAVID_PERSISTENT_MEMORY_V17_4",
+    "The following records were loaded live from DAVID persistent Supabase memory.",
+    "They are verified, active, user-confirmed, read-only memory context.",
+    "Use them when relevant. Do not claim a memory exists unless it is present below.",
+    JSON.stringify({
+      status: String(memoryPayload.status || "DAVID_MEMORY_READY"),
+      active_count: Number(memoryPayload.count || verified.length),
+      context_checksum: String(memoryPayload.context_checksum || ""),
+      items: verified
+    }, null, 2)
+  ].join("\n");
+}
+
+
 class LiveSoulRelay extends SoulRelay {
   constructor(options) {
     super(options);
@@ -209,7 +315,51 @@ class LiveSoulRelay extends SoulRelay {
       });
 
       const teacherGoal = extractTeacherGoal(job.text);
-      const prompt = buildSoulPrompt(job, this.config.maxMessageChars);
+
+      // DAVID_SOUL_MEMORY_RETRIEVAL_V17_4
+      let soulMemoryV174 = null;
+
+      try {
+        soulMemoryV174 = await syncSoulMemoryV174(this.config);
+
+        if (soulMemoryV174?.ok === true) {
+          this.sendStatus(
+            `DAVID MEMORY LIVE | active=${Number(soulMemoryV174.count || 0)}`,
+            "ready",
+            {
+              stage: "persistent_memory_loaded",
+              active_count: Number(soulMemoryV174.count || 0),
+              context_checksum: String(
+                soulMemoryV174.context_checksum || ""
+              )
+            }
+          );
+        }
+      } catch (memoryError) {
+        soulMemoryV174 = {
+          ok: false,
+          status: "DAVID_MEMORY_UNAVAILABLE",
+          error: String(memoryError?.message || memoryError),
+          count: 0,
+          items: []
+        };
+
+        this.sendStatus(
+          `DAVID MEMORY LIVE unavailable: ${soulMemoryV174.error}`,
+          "warning",
+          { stage: "persistent_memory_unavailable" }
+        );
+      }
+
+      const soulBasePromptV174 =
+        buildSoulPrompt(job, this.config.maxMessageChars);
+
+      const soulMemoryPreambleV174 =
+        buildSoulMemoryPreambleV174(soulMemoryV174);
+
+      const prompt = soulMemoryPreambleV174
+        ? `${soulMemoryPreambleV174}\n\nUSER_REQUEST:\n${soulBasePromptV174}`
+        : soulBasePromptV174;
 
       await this.report(job, LIVE_STAGES.OPENING_CHAT, progressLabel(LIVE_STAGES.OPENING_CHAT), {
         chat_host: "chatgpt.com"
