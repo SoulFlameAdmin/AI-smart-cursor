@@ -31,8 +31,27 @@ function Read-JsonSafe {
   catch { return $null }
 }
 
+function Get-OptionalProperty {
+  param(
+    [AllowNull()][object]$Object,
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowNull()][object]$Default = $null
+  )
+  if ($null -eq $Object) { return $Default }
+  $property = $Object.PSObject.Properties[$Name]
+  if ($null -eq $property) { return $Default }
+  return $property.Value
+}
+
+function Get-StatusEvents {
+  param([AllowNull()][object]$Result)
+  $events = Get-OptionalProperty -Object $Result -Name 'status_events' -Default @()
+  if ($null -eq $events) { return @() }
+  return @($events)
+}
+
 Write-Host '============================================================' -ForegroundColor Cyan
-Write-Host '  DAVID AUTONOMOUS DIAGNOSTIC REPORT' -ForegroundColor Cyan
+Write-Host '  DAVID AUTONOMOUS DIAGNOSTIC REPORT'
 Write-Host '============================================================' -ForegroundColor Cyan
 
 $taskFile = $null
@@ -52,33 +71,39 @@ if (-not $taskFile) {
   $task = Read-JsonSafe -Path $taskFile.FullName
   Write-Host ('File      : ' + $taskFile.FullName)
   if ($task) {
-    Write-Host ('Task ID   : ' + (SafeText $task.task_id 200))
-    Write-Host ('State     : ' + (SafeText $task.state 100))
-    Write-Host ('Goal      : ' + (SafeText $task.goal 600))
-    if ($null -ne $task.updated_at) { Write-Host ('Updated   : ' + (SafeText $task.updated_at 120)) }
+    Write-Host ('Task ID   : ' + (SafeText (Get-OptionalProperty $task 'task_id') 200))
+    Write-Host ('State     : ' + (SafeText (Get-OptionalProperty $task 'state') 100))
+    Write-Host ('Goal      : ' + (SafeText (Get-OptionalProperty $task 'goal') 600))
+    $updated = Get-OptionalProperty -Object $task -Name 'updated_at'
+    if ($null -ne $updated -and [string]$updated) {
+      Write-Host ('Updated   : ' + (SafeText $updated 120))
+    }
   }
 
   $journal = [System.IO.Path]::ChangeExtension($taskFile.FullName, '.jsonl')
   Write-Host "`n=== LAST AUTONOMOUS EVIDENCE ===" -ForegroundColor Yellow
   if (Test-Path -LiteralPath $journal -PathType Leaf) {
     $events = @(Get-Content -LiteralPath $journal -Encoding UTF8 -ErrorAction SilentlyContinue |
-      Select-Object -Last 80 |
+      Select-Object -Last 120 |
       ForEach-Object {
         try { $_ | ConvertFrom-Json } catch { $null }
       } |
       Where-Object { $null -ne $_ })
 
     $interesting = @($events | Where-Object {
-      $_.event_type -match 'verification|worker_exception|blocked|failed|completed|state_test|state_verify'
-    } | Select-Object -Last 30)
+      (SafeText (Get-OptionalProperty $_ 'event_type') 200) -match 'verification|worker_exception|blocked|failed|completed|state_test|state_verify'
+    } | Select-Object -Last 40)
 
-    if ($interesting.Count -eq 0) { $interesting = @($events | Select-Object -Last 20) }
+    if ($interesting.Count -eq 0) { $interesting = @($events | Select-Object -Last 25) }
     foreach ($event in $interesting) {
-      $evidence = if ($null -ne $event.evidence) { SafeText ($event.evidence | ConvertTo-Json -Depth 8 -Compress) 1800 } else { '' }
+      $eventEvidence = Get-OptionalProperty -Object $event -Name 'evidence'
+      $evidence = if ($null -ne $eventEvidence) {
+        SafeText ($eventEvidence | ConvertTo-Json -Depth 12 -Compress) 2200
+      } else { '' }
       Write-Host ('{0} | {1} | state={2} | {3}' -f `
-        (SafeText $event.timestamp 80), `
-        (SafeText $event.event_type 120), `
-        (SafeText $event.state 80), `
+        (SafeText (Get-OptionalProperty $event 'timestamp') 80), `
+        (SafeText (Get-OptionalProperty $event 'event_type') 120), `
+        (SafeText (Get-OptionalProperty $event 'state') 80), `
         $evidence)
     }
   } else {
@@ -90,22 +115,23 @@ Write-Host "`n=== RECENT TEACHER RESULTS ===" -ForegroundColor Cyan
 if (Test-Path -LiteralPath $requestRoot -PathType Container) {
   $results = @(Get-ChildItem -LiteralPath $requestRoot -Filter '*.result.json' -File -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTimeUtc -Descending |
-    Select-Object -First 12)
+    Select-Object -First 16)
 
   foreach ($file in $results) {
     $result = Read-JsonSafe -Path $file.FullName
     if (-not $result) { continue }
-    $lastError = @($result.status_events | Where-Object { $_.kind -eq 'error' } | Select-Object -Last 1)
-    $lastEvent = @($result.status_events | Select-Object -Last 1)
+    $statusEvents = @(Get-StatusEvents -Result $result)
+    $lastError = @($statusEvents | Where-Object { (Get-OptionalProperty $_ 'kind') -eq 'error' } | Select-Object -Last 1)
+    $lastEvent = @($statusEvents | Select-Object -Last 1)
     Write-Host ('--- ' + $file.Name)
-    Write-Host ('status  : ' + (SafeText $result.status 100))
-    Write-Host ('ok      : ' + [string]$result.ok)
-    Write-Host ('round   : ' + (SafeText $result.round 80))
-    Write-Host ('summary : ' + (SafeText $result.summary 1500))
+    Write-Host ('status  : ' + (SafeText (Get-OptionalProperty $result 'status') 100))
+    Write-Host ('ok      : ' + [string](Get-OptionalProperty $result 'ok' $false))
+    Write-Host ('round   : ' + (SafeText (Get-OptionalProperty $result 'round') 80))
+    Write-Host ('summary : ' + (SafeText (Get-OptionalProperty $result 'summary') 1500))
     if ($lastError.Count -gt 0) {
-      Write-Host ('error   : ' + (SafeText $lastError[0].message 1500)) -ForegroundColor Red
+      Write-Host ('error   : ' + (SafeText (Get-OptionalProperty $lastError[0] 'message') 1500)) -ForegroundColor Red
     } elseif ($lastEvent.Count -gt 0) {
-      Write-Host ('last    : ' + (SafeText $lastEvent[0].message 1000))
+      Write-Host ('last    : ' + (SafeText (Get-OptionalProperty $lastEvent[0] 'message') 1000))
     }
   }
 } else {
@@ -116,7 +142,7 @@ Write-Host "`n=== LIVE SMOKE PROOF ===" -ForegroundColor Green
 if (Test-Path -LiteralPath $smokeFile -PathType Leaf) {
   $content = Get-Content -LiteralPath $smokeFile -Raw -Encoding UTF8
   $exact = ($content -eq 'DAVID_AUTONOMOUS_LIVE_PASS') -or ($content -eq "DAVID_AUTONOMOUS_LIVE_PASS`r`n") -or ($content -eq "DAVID_AUTONOMOUS_LIVE_PASS`n")
-  Write-Host ('Exists    : YES')
+  Write-Host 'Exists    : YES'
   Write-Host ('Exact     : ' + $exact)
   Write-Host ('Content   : ' + (SafeText $content 200))
   try {
@@ -136,10 +162,10 @@ foreach ($entry in @(
   if ($status) {
     Write-Host ('{0,-8} state={1} pid={2} stage={3} message={4}' -f `
       $entry.Name, `
-      (SafeText $status.state 80), `
-      (SafeText $status.pid 40), `
-      (SafeText $status.stage 100), `
-      (SafeText $status.message 600))
+      (SafeText (Get-OptionalProperty $status 'state') 80), `
+      (SafeText (Get-OptionalProperty $status 'pid') 40), `
+      (SafeText (Get-OptionalProperty $status 'stage') 100), `
+      (SafeText (Get-OptionalProperty $status 'message') 600))
   } else {
     Write-Host ($entry.Name + '     status=UNAVAILABLE')
   }
