@@ -5,6 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
+const AUTONOMOUS_TRIGGER = /^\s*@sfadmin\b/iu;
+
 const TRIGGER_PATTERNS = [
   /^\s*@worker\b\s*[:\-]?\s*/i,
   /^\s*david\s+(?:worker|teacher|учител)\b\s*[:\-]?\s*/iu,
@@ -12,9 +14,19 @@ const TRIGGER_PATTERNS = [
   /^\s*(?:david[\s,:\-]+)?ъпгрейд\s*[:\-]?\s*/iu
 ];
 
+function isAutonomousGoal(value) {
+  return AUTONOMOUS_TRIGGER.test(String(value || "").trim());
+}
+
 function extractTeacherGoal(value) {
   const text = String(value || "").trim();
   if (!text) return null;
+
+  // DAVID_AUTONOMOUS_SOUL_ROUTE_V1
+  // Preserve the @sfadmin prefix so runTeacherWorkerGoal can distinguish an
+  // autonomous task from the existing one-shot Teacher/Worker triggers.
+  if (isAutonomousGoal(text)) return text;
+
   for (const pattern of TRIGGER_PATTERNS) {
     if (!pattern.test(text)) continue;
     const goal = text.replace(pattern, "").trim();
@@ -30,7 +42,98 @@ function writeJsonAtomic(filePath, value) {
   fs.renameSync(temporary, filePath);
 }
 
+async function runAutonomousWorkerGoal({
+  goal,
+  projectRoot,
+  sendStatus,
+  onProgress
+}) {
+  // Dynamic require is intentional. autonomous-orchestrator.cjs uses the
+  // normal runTeacherWorkerGoal as its inner Thinker -> Worker executor, so a
+  // top-level import here would create a circular initialization dependency.
+  const { AutonomousOrchestrator } = require("./autonomous-orchestrator.cjs");
+
+  const root = path.resolve(projectRoot || path.resolve(__dirname, ".."));
+  const maxAttempts = Math.max(
+    1,
+    Math.min(
+      10,
+      Number.parseInt(process.env.DAVID_AUTONOMOUS_MAX_ATTEMPTS || "10", 10) || 10
+    )
+  );
+
+  const forwardStatus = (message, kind = "working", meta = {}) => {
+    sendStatus?.(message, kind, meta);
+    if (typeof onProgress === "function") {
+      Promise.resolve(onProgress({
+        stage: meta?.stage || "autonomous",
+        message: String(message || ""),
+        kind,
+        meta
+      })).catch(() => {});
+    }
+  };
+
+  forwardStatus(
+    "DAVID AUTONOMOUS | @sfadmin задачата е поета от Orchestrator V1.",
+    "training",
+    { stage: "autonomous_started" }
+  );
+
+  const orchestrator = new AutonomousOrchestrator({
+    projectRoot: root,
+    sendStatus: forwardStatus,
+    maxAttempts
+  });
+
+  const result = await orchestrator.run(goal, {
+    max_rounds: Math.max(
+      1,
+      Math.min(
+        500,
+        Number.parseInt(process.env.DAVID_AUTONOMOUS_MAX_ROUNDS || "80", 10) || 80
+      )
+    ),
+    metadata: {
+      source: "soul",
+      route: "@sfadmin",
+      autonomous_soul_route: "v1"
+    }
+  });
+
+  const attempts = Number(result?.attempts || 0) || null;
+  const taskId = result?.task?.task_id || null;
+  const goalText = String(result?.task?.goal || String(goal || "").replace(AUTONOMOUS_TRIGGER, "")).trim();
+
+  const summary = result?.status === "completed"
+    ? `AUTONOMOUS PASS | ${goalText} | attempts=${attempts || 1}`
+    : result?.status === "blocked"
+      ? `AUTONOMOUS BLOCKED | ${goalText} | approval or blocker requires attention`
+      : `AUTONOMOUS FAILED | ${goalText} | attempts=${attempts || maxAttempts}`;
+
+  return {
+    ...result,
+    autonomous: true,
+    task_id: taskId,
+    round: attempts || result?.worker_result?.round || null,
+    summary
+  };
+}
+
 async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress }) {
+  // DAVID_AUTONOMOUS_SOUL_ROUTE_V1
+  // @sfadmin is the universal autonomous route. The orchestrator itself calls
+  // this function again with a non-@sfadmin generated Teacher goal, which then
+  // follows the normal worker path below instead of recursing.
+  if (isAutonomousGoal(goal)) {
+    return runAutonomousWorkerGoal({
+      goal,
+      projectRoot,
+      sendStatus,
+      onProgress
+    });
+  }
+
   const root = path.resolve(projectRoot || path.resolve(__dirname, ".."));
   const requestRoot = path.join(root, ".david-runtime", "teacher-requests");
   fs.mkdirSync(requestRoot, { recursive: true });
@@ -136,7 +239,10 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
 }
 
 module.exports = {
+  AUTONOMOUS_TRIGGER,
   TRIGGER_PATTERNS,
   extractTeacherGoal,
+  isAutonomousGoal,
+  runAutonomousWorkerGoal,
   runTeacherWorkerGoal
 };
