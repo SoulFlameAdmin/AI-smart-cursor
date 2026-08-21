@@ -1,6 +1,6 @@
-"use strict";
+﻿"use strict";
 const path = require("path");
-const root = process.argv[2] || "E:\\david-cursor-v1-complete\\david-cursor-v1";
+const root = process.argv[2] || path.resolve(__dirname, "..");
 const task = process.argv.slice(3).join(" ").trim();
 if (!task) {
   console.error('Usage: node core\\knowledge-gap-probe-v20.cjs "<task>"');
@@ -14,3 +14,4 @@ try {
 } catch {}
 const result = analyzeKnowledgeGap({ task, skills, memories: [] });
 process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+
