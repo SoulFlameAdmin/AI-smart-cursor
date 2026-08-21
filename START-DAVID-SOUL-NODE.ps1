@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [switch]$SkipTests,
-  [ValidateRange(30, 600)][int]$StartupTimeoutSeconds = 120
+  [ValidateRange(30, 600)][int]$StartupTimeoutSeconds = 120,
+  [ValidateRange(0, 20)][int]$MaxAutoRestarts = 5
 )
 
 Set-StrictMode -Version Latest
@@ -120,7 +121,27 @@ Write-Host 'Keep this PowerShell window open. Press Ctrl+C to stop DAVID SOUL No
 Write-Host ''
 
 Write-Step 6 $totalSteps 'Live runtime output follows.'
-& $node.Source $entryFile
-$code = $LASTEXITCODE
-if ($null -eq $code) { $code = 0 }
-if ($code -ne 0) { throw "DAVID SOUL Node runtime stopped with exit code $code." }
+$restartCount = 0
+while ($true) {
+  & $node.Source $entryFile
+  $code = $LASTEXITCODE
+  if ($null -eq $code) { $code = 0 }
+
+  if ($code -eq 0) {
+    break
+  }
+
+  # DAVID_SOUL_TRANSIENT_EXIT_RECOVERY_V1
+  # We have observed Windows/Node returning -1 after a completed Soul turn even
+  # though the persistent Edge profile remains healthy. Treat only this exact
+  # exit as transient. Other non-zero exits still fail closed so real startup or
+  # runtime defects are not hidden by an endless restart loop.
+  if ($code -eq -1 -and $restartCount -lt $MaxAutoRestarts) {
+    $restartCount += 1
+    Write-Warn ("DAVID SOUL Node transient exit -1. Auto-restart {0}/{1} in 2 seconds." -f $restartCount, $MaxAutoRestarts)
+    Start-Sleep -Seconds 2
+    continue
+  }
+
+  throw "DAVID SOUL Node runtime stopped with exit code $code."
+}
