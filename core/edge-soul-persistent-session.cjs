@@ -132,6 +132,7 @@ function installPersistentSoulSession() {
     let lastReport = 0;
     let loginNavigationAttempted = false;
     let targetNavigationAttempted = false;
+    let loginHold = false; // DAVID_LOGIN_HOLD_V3
 
     writeSessionState(this, "checking_saved_login");
 
@@ -143,6 +144,12 @@ function installPersistentSoulSession() {
       const explicitlySignedOut = Boolean(
         info?.authPage || info?.explicitLoginControl
       );
+
+      // DAVID_LOGIN_HOLD_V3:
+      // OAuth may temporarily leave chatgpt.com.
+      // Keep the SAME tab untouched until ChatGPT prompt returns.
+      if (explicitlySignedOut) loginHold = true;
+      if (promptReady) loginHold = false;
 
       if (sameConversation(current, target) && promptReady) {
         writeSessionState(this, "authenticated", {
@@ -172,7 +179,7 @@ function installPersistentSoulSession() {
         continue;
       }
 
-      if (!isChatGptUrl(current) && now - lastNavigate > 3000) {
+      if (!loginHold && !isChatGptUrl(current) && now - lastNavigate > 3000) {
         lastNavigate = now;
         targetNavigationAttempted = true;
         await this.navigate(target);
@@ -182,6 +189,7 @@ function installPersistentSoulSession() {
 
       if (
         explicitlySignedOut &&
+        isChatGptUrl(current) &&
         !info?.authPage &&
         !loginNavigationAttempted &&
         now - lastNavigate > 2500
@@ -225,12 +233,12 @@ function installPersistentSoulSession() {
       if (now - lastReport > 2500) {
         lastReport = now;
         await this.showReport(
-          explicitlySignedOut ? "login_required" : "loading_saved_session",
-          explicitlySignedOut
-            ? "Log in to ChatGPT once in the DAVID Edge profile. The login will be kept for later starts."
+          (loginHold || explicitlySignedOut) ? "login_required" : "loading_saved_session",
+          (loginHold || explicitlySignedOut)
+            ? "LOGIN HOLD: finish signing in. DAVID will not navigate or replace the authentication tab."
             : "DAVID is loading the saved ChatGPT session and the fixed SOUL conversation.",
           { ...info, profile_dir: this.profileDir },
-          explicitlySignedOut ? "login_required" : "working"
+          (loginHold || explicitlySignedOut) ? "login_required" : "working"
         );
       }
 

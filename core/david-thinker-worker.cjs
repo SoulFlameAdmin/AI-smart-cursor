@@ -86,14 +86,48 @@ class AttachedThinkerBrowser extends EdgeSoulBrowserAgent {
   }
 
   async findOrCreateTarget() {
+    // DAVID_THINKER_LOGIN_HOLD_V3
+    //
+    // During Google/OpenAI/Microsoft authentication the fixed Thinker tab
+    // temporarily stops being the exact conversation URL.
+    // Reuse the SAME tab. Never create or replace it during login.
+
     const targets = await this.debuggerJson("/json/list");
     const pages = targets.filter((item) => item?.type === "page");
-    const target = pages.find((item) => sameConversation(item.url, this.chatUrl));
+
+    let target = pages.find((item) =>
+      sameConversation(item.url, this.chatUrl)
+    );
+
+    // Keep the exact target that the worker was already attached to.
+    if (!target && this.targetId) {
+      target = pages.find((item) => item.id === this.targetId) || null;
+    }
+
+    // OAuth / ChatGPT login hold.
+    if (!target) {
+      target = pages.find((item) => {
+        const url = String(item?.url || "");
+
+        return (
+          /^https:\/\/chatgpt\.com\//i.test(url) ||
+          /^https:\/\/auth\.openai\.com\//i.test(url) ||
+          /^https:\/\/accounts\.google\./i.test(url) ||
+          /^https:\/\/login\.microsoftonline\.com\//i.test(url)
+        );
+      }) || null;
+    }
+
     if (!target?.webSocketDebuggerUrl) {
       throw new Error(
-        `The fixed Thinker conversation is not present on port ${this.port}.`
+        `DAVID Thinker LOGIN_HOLD: port ${this.port} has no usable Thinker/authentication tab. Finish login in the existing DAVID Edge profile.`
       );
     }
+
+    if (target.id) {
+      this.targetId = target.id;
+    }
+
     return target;
   }
 

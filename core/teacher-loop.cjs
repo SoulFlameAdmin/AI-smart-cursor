@@ -627,6 +627,47 @@ async function syncDavidMemoryContextV172(config = {}) {
   }
 }
 
+// DAVID_MEMORY_PROMOTION_V17_3
+async function promoteDavidMemoryV173(config = {}, payload = {}) {
+  const baseUrl = String(config.supabaseUrl || "").replace(/\/$/, "");
+  const token = String(config.deviceToken || "").trim();
+
+  if (!baseUrl || token.length < 32) {
+    throw new Error("DAVID_MEMORY_PROMOTE_NOT_CONFIGURED");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/functions/v1/david-memory-promote`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-david-device-token": token
+        },
+        body: JSON.stringify({ payload }),
+        signal: controller.signal
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(
+        data?.error ||
+        `DAVID memory promote HTTP ${response.status}`
+      );
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function buildMemoryContextForThinkerV172(davidMemoryPayloadV172) {
   if (!davidMemoryPayloadV172 || typeof davidMemoryPayloadV172 !== "object" || davidMemoryPayloadV172.ok !== true) {
     return {
@@ -839,6 +880,22 @@ class TeacherLoop {
         if (!davidMemoryBridgeContextV172 || davidMemoryBridgeContextV172.ok !== true) {
           throw new Error(String(davidMemoryBridgeContextV172?.error || davidMemoryBridgeContextV172?.reason || "memory bridge unavailable"));
         }
+
+        // DAVID_MEMORY_PROMOTION_V17_3
+        // The device-token bridge is the authoritative DAVID memory path.
+        memoryAvailable = true;
+        activeMemories = (
+          Array.isArray(davidMemoryBridgeContextV172.items)
+            ? davidMemoryBridgeContextV172.items
+            : []
+        ).map((item) => ({
+          id: item?.record_id ?? null,
+          status: "active",
+          memory_type: String(item?.type || "fact"),
+          title: item?.title == null ? "" : String(item.title),
+          content: String(item?.content || ""),
+          content_checksum: String(item?.checksum || "")
+        }));
         this.sendStatus(
           `DAVID MEMORY READY · approved=${Number(davidMemoryBridgeContextV172.approved || 0)} · verified=${Number(davidMemoryBridgeContextV172.verified || 0)} · active=${Number(davidMemoryBridgeContextV172.count || 0)}`,
           "ready",
@@ -1195,14 +1252,52 @@ class TeacherLoop {
               { stage: "memory_write", round, action_id: action.action_id }
             );
             try {
-              const promoted = await this.memory.promoteApprovedMemory({
-                title: normalizedMemory.title,
-                content: normalizedMemory.content,
-                memoryType: normalizedMemory.memoryType,
-                evidence: normalizedMemory.evidence,
-                source: normalizedMemory.source,
-                humanApproved: true
-              });
+              // DAVID_MEMORY_PROMOTION_V17_3
+              const promoted = await promoteDavidMemoryV173(
+                this.config,
+                {
+                  twin_id: davidMemoryBridgeContextV172?.twin_id || null,
+                  memory_type: normalizedMemory.memoryType,
+                  title: normalizedMemory.title,
+                  content: normalizedMemory.content,
+                  evidence: normalizedMemory.evidence,
+                  source: normalizedMemory.source,
+                  human_approved: true,
+                  expected_checksum: checksum,
+                  job_id: jobId,
+                  round,
+                  action_id: action.action_id,
+                  importance: 4,
+                  confidence: 100
+                }
+              );
+
+              // Second independent proof:
+              // load DAVID context again and require the exact SHA-256.
+              const refreshedMemory =
+                await syncDavidMemoryContextV172(this.config);
+
+              const exactLoaded =
+                refreshedMemory?.ok === true &&
+                Array.isArray(refreshedMemory.items) &&
+                refreshedMemory.items.some(
+                  (item) =>
+                    String(item?.checksum || "").toLowerCase() ===
+                    checksum.toLowerCase()
+                );
+
+              if (!exactLoaded) {
+                throw new Error(
+                  "MEMORY_PROMOTION_CONTEXT_READBACK_FAILED"
+                );
+              }
+
+              davidMemoryBridgeContextV172 = refreshedMemory;
+              memoryAvailable = true;
+
+              promoted.context_verified = true;
+              promoted.context_count =
+                Number(refreshedMemory.count || 0);
               const result = {
                 action_id: action.action_id,
                 ok: true,

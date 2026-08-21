@@ -329,6 +329,7 @@ class EdgeSoulBrowserAgent {
     let lastNavigate = 0;
     let lastReport = 0;
     let loginNavigationAttempted = false;
+    let loginHold = false; // DAVID_LOGIN_HOLD_V3
 
     while (Date.now() - started < 10 * 60 * 1000) {
       const info = await this.diagnostics().catch(() => null);
@@ -336,6 +337,10 @@ class EdgeSoulBrowserAgent {
       const now = Date.now();
       const elapsed = now - started;
       const promptReady = Number(info?.promptCount || 0) > 0;
+
+      // DAVID_LOGIN_HOLD_V3
+      if (info?.authPage || info?.loginVisible) loginHold = true;
+      if (promptReady) loginHold = false;
 
       if (sameConversation(current, target) && promptReady) {
         await this.showReport(
@@ -360,7 +365,7 @@ class EdgeSoulBrowserAgent {
         continue;
       }
 
-      if (!isChatGptUrl(current) && now - lastNavigate > 3000) {
+      if (!loginHold && !isChatGptUrl(current) && now - lastNavigate > 3000) {
         lastNavigate = now;
         await this.navigate(target);
         await sleep(1400);
@@ -375,6 +380,7 @@ class EdgeSoulBrowserAgent {
 
       if (
         blankOrSignedOut &&
+        isChatGptUrl(current) &&
         !info?.authPage &&
         !loginNavigationAttempted &&
         now - lastNavigate > 3000
@@ -394,7 +400,7 @@ class EdgeSoulBrowserAgent {
 
       if (now - lastReport > 2000) {
         lastReport = now;
-        const loginRequired = Boolean(info?.authPage || info?.loginVisible || blankOrSignedOut);
+        const loginRequired = Boolean(loginHold || info?.authPage || info?.loginVisible || blankOrSignedOut);
         await this.showReport(
           loginRequired ? "login_required" : "waiting_chatgpt",
           loginRequired
