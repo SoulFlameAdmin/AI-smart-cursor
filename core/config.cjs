@@ -34,7 +34,7 @@ function loadConfig() {
     ),
     teacherChatUrl:
       process.env.DAVID_TEACHER_CHAT_URL ||
-      "https://chatgpt.com/c/6a6d7e46-3534-83eb-a42b-c981bad99c84",
+      "https://chatgpt.com/c/6a81285a-3e38-83ed-965a-b221453fb742",
     repositoryRoot: process.env.DAVID_REPOSITORY_ROOT || process.cwd(),
     maxTeacherRounds: parseInteger(
       process.env.DAVID_MAX_TEACHER_ROUNDS,

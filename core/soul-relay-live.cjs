@@ -3,10 +3,15 @@
 const {
   SoulRelay,
   buildSoulPrompt,
-  normalizeClaimedMessage
+  normalizeClaimedMessage,
+  validateSoulChatUrl
 } = require("./soul-relay-runtime-v3.cjs");
+const {
+  extractTeacherGoal,
+  runTeacherWorkerGoal
+} = require("./david-teacher-client.cjs");
 
-const LIVE_RELAY_VERSION = "david-soul-relay-v3";
+const LIVE_RELAY_VERSION = "david-soul-relay-v4-multi-session";
 const HEARTBEAT_MS = 5000;
 
 const LIVE_STAGES = Object.freeze({
@@ -76,6 +81,36 @@ class LiveSoulRelay extends SoulRelay {
   }
 
   async start() {
+    const fixedRouteMode = String(process.env.DAVID_FIXED_ROUTE_MODE || "1") !== "0";
+    if (fixedRouteMode) {
+      this.sendStatus(
+        "DAVID uses one fixed GPT conversation for this isolated Edge port.",
+        "ready"
+      );
+    } else {
+      try {
+        const routeData = await this.bridge.request("list_chat_routes", {
+          worker: LIVE_RELAY_VERSION
+        });
+        const routes = Array.isArray(routeData?.routes) ? routeData.routes : [];
+        if (routes.length > 0 && typeof this.browser?.preloadRoutes === "function") {
+          const preload = this.browser.preloadRoutes(routes);
+          this.sendStatus(
+            `DAVID loaded ${routes.length} GPT routes.`,
+            "ready"
+          );
+          Promise.resolve(preload).catch((error) => {
+            this.sendStatus(`DAVID background preload: ${error.message}`, "warning");
+          });
+        }
+      } catch (error) {
+        this.sendStatus(
+          `DAVID could not preload GPT routes; the primary route stays active: ${error.message}`,
+          "warning"
+        );
+      }
+    }
+
     await super.start();
     this.sendStatus(
       "DAVID Electron е постоянно свързан със Soul · чакам въпроси",
@@ -151,7 +186,8 @@ class LiveSoulRelay extends SoulRelay {
 
     try {
       const claimed = await this.bridge.request("claim_soul_message", {
-        user_id: this.config.userId || null,
+        user_id: null,
+        all_routed_users: true,
         worker: LIVE_RELAY_VERSION
       });
 
@@ -161,9 +197,10 @@ class LiveSoulRelay extends SoulRelay {
         return;
       }
 
-      if (this.config.userId && job.userId && job.userId !== this.config.userId) {
-        throw new Error("Получено е съобщение от различен SOUL потребител.");
-      }
+      const targetChatUrl = validateSoulChatUrl(
+        job.chatUrl || this.config.chatUrl
+      );
+
 
       this.currentMessageId = job.id;
 
@@ -171,6 +208,7 @@ class LiveSoulRelay extends SoulRelay {
         prompt_chars: job.text.length
       });
 
+      const teacherGoal = extractTeacherGoal(job.text);
       const prompt = buildSoulPrompt(job, this.config.maxMessageChars);
 
       await this.report(job, LIVE_STAGES.OPENING_CHAT, progressLabel(LIVE_STAGES.OPENING_CHAT), {
@@ -183,11 +221,60 @@ class LiveSoulRelay extends SoulRelay {
 
       this.startHeartbeat(job, startedAt);
 
-      const answer = await this.browser.sendAndWait({
-        url: this.config.chatUrl,
-        prompt,
-        timeoutMs: this.config.responseTimeoutMs
-      });
+      let answer;
+      if (teacherGoal) {
+        await this.report(
+          job,
+          LIVE_STAGES.GPT_THINKING,
+          "DAVID Thinker и PowerShell Worker изпълняват учебната задача.",
+          { teacher_worker: true, thinker_port: 9444 }
+        );
+        // DAVID_SOUL_WORKER_PROGRESS_BRIDGE_V14
+        // The worker owns its heartbeat while the long Teacher job is active.
+        this.stopHeartbeat();
+        let workerProgressChain = Promise.resolve();
+        const teacherResult = await runTeacherWorkerGoal({
+          goal: teacherGoal,
+          projectRoot: this.browser?.rootDir || process.cwd(),
+          sendStatus: this.sendStatus,
+          onProgress: (event) => {
+            const stage = String(event?.stage || "working");
+            const message = String(event?.message || "DAVID СЂР°Р±РѕС‚Рё.").slice(0, 900);
+            const details = {
+              teacher_worker: true,
+              worker_stage: stage,
+              round: Number(event?.meta?.round || 0) || null,
+              action_id: String(event?.meta?.action_id || "").slice(0, 120) || null,
+              elapsed_seconds: Number(event?.meta?.elapsed_seconds || 0) || null,
+              exit_code: Number.isInteger(event?.meta?.exit_code)
+                ? event.meta.exit_code
+                : null
+            };
+            workerProgressChain = workerProgressChain
+              .then(() => this.report(
+                job,
+                LIVE_STAGES.GPT_THINKING,
+                message,
+                details
+              ))
+              .catch(() => {});
+            return workerProgressChain;
+          }
+        });
+        await workerProgressChain;
+        answer = [
+          teacherResult.ok ? "DAVID WORKER: ГОТОВО" : "DAVID WORKER: СПРЯНО",
+          `Статус: ${teacherResult.status || "unknown"}`,
+          teacherResult.round ? `Рунд: ${teacherResult.round}` : "",
+          String(teacherResult.summary || "Няма финално обобщение.")
+        ].filter(Boolean).join("\n");
+      } else {
+        answer = await this.browser.sendAndWait({
+          url: targetChatUrl,
+          prompt,
+          timeoutMs: Math.max(Number(this.config.responseTimeoutMs) || 0, 86400000) // DAVID_FULL_TURN_TIMEOUT_V2
+        });
+      }
 
       this.stopHeartbeat();
 
@@ -199,13 +286,57 @@ class LiveSoulRelay extends SoulRelay {
         answer_chars: answer.length
       });
 
-      await this.bridge.request("complete_soul_message", {
-        message_id: job.id,
-        user_id: job.userId || this.config.userId || null,
-        conversation_id: job.conversationId || null,
-        worker: LIVE_RELAY_VERSION,
-        answer
-      });
+      // DAVID_FULL_TURN_CHUNKED_RETURN_V2
+      // The local answer is authoritative only after GPT has really ended.
+      // Large answers are uploaded in ordered chunks and the server verifies
+      // total character count + SHA256 before marking the Soul turn completed.
+      const FULL_TURN_DIRECT_CHARS = 60000;
+      const FULL_TURN_CHUNK_CHARS = 60000;
+      const answerSha256 = require("crypto")
+        .createHash("sha256")
+        .update(answer, "utf8")
+        .digest("hex");
+
+      if (answer.length <= FULL_TURN_DIRECT_CHARS) {
+        await this.bridge.request("complete_soul_message", {
+          message_id: job.id,
+          user_id: job.userId || this.config.userId || null,
+          conversation_id: job.conversationId || null,
+          worker: LIVE_RELAY_VERSION,
+          answer
+        });
+      } else {
+        await this.bridge.request("begin_soul_answer_chunks", {
+          message_id: job.id,
+          user_id: job.userId || this.config.userId || null,
+          worker: LIVE_RELAY_VERSION
+        });
+
+        const totalChunks = Math.ceil(answer.length / FULL_TURN_CHUNK_CHARS);
+
+        for (let seq = 0; seq < totalChunks; seq += 1) {
+          const start = seq * FULL_TURN_CHUNK_CHARS;
+          const chunk = answer.slice(start, start + FULL_TURN_CHUNK_CHARS);
+
+          await this.bridge.request("append_soul_answer_chunk", {
+            message_id: job.id,
+            user_id: job.userId || this.config.userId || null,
+            worker: LIVE_RELAY_VERSION,
+            seq,
+            chunk
+          });
+        }
+
+        await this.bridge.request("complete_soul_message_chunked", {
+          message_id: job.id,
+          user_id: job.userId || this.config.userId || null,
+          conversation_id: job.conversationId || null,
+          worker: LIVE_RELAY_VERSION,
+          total_chunks: totalChunks,
+          total_chars: answer.length,
+          sha256: answerSha256
+        });
+      }
       completionCommitted = true;
 
       this.currentStage = LIVE_STAGES.COMPLETED;

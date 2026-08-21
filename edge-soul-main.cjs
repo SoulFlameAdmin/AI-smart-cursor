@@ -1,4 +1,12 @@
 "use strict";
+const { installDavidSoulTurnFinalizerV4 } = require("./core/edge-soul-turn-finalizer-v4.cjs"); // DAVID_TURN_FINALIZER_V4_REQUIRE
+const { installDavidSoulAutoReconnectV11 } = require("./core/david-soul-auto-reconnect-v11.cjs"); // DAVID_SOUL_AUTO_RECONNECT_V11
+const { installDavidSoulAutoReconnect } = require("./core/david-soul-auto-reconnect-v1.cjs"); // DAVID_SOUL_AUTO_RECONNECT_V1
+const { installDavidSoulCompletionProof } = require("./core/david-soul-completion-proof-v1.cjs"); // DAVID_SOUL_COMPLETION_PROOF_V1
+const { installDavidSoulNetworkShield } = require("./core/david-soul-network-shield-v1.cjs"); // DAVID_SOUL_NETWORK_SHIELD_V1
+const { installDavidSoulWholeTurnReturn } = require("./core/david-soul-whole-turn-return-v1.cjs"); // DAVID_SOUL_WHOLE_TURN_RETURN_V1
+const { installDavidSoulMasterEdge } = require("./core/david-soul-master-edge.cjs"); // DAVID_SOUL_MASTER_EDGE_V1
+const { installDavidSoulAnchor2 } = require("./core/david-soul-anchor-2.cjs"); // DAVID_SOUL_ANCHOR_2_V020
 
 require("dotenv").config();
 
@@ -6,7 +14,8 @@ const fs = require("fs");
 const path = require("path");
 const { app, BrowserWindow, dialog } = require("electron");
 const { LiveSoulRelay } = require("./core/soul-relay-live.cjs");
-const { EdgeSoulBrowserAgent } = require("./core/edge-cdp-soul-browser.cjs");
+const { EdgeSoulMultiSessionAgent } = require("./core/edge-cdp-soul-browser.cjs");
+const { installDavidFastBrainIO } = require("./core/david-fast-brain-io-v1.cjs"); // DAVID_FAST_BRAIN_IO_V1_REQUIRE
 const {
   installPersistentSoulSession
 } = require("./core/edge-soul-persistent-session.cjs");
@@ -16,25 +25,28 @@ const {
 const {
   installEdgeSoulRecovery
 } = require("./core/edge-soul-recovery-patch.cjs");
+const {
+  installCompletedSoulAnswerDetection
+} = require("./core/edge-soul-answer-completion-patch.cjs"); // DAVID_SOUL_FINAL_ANSWER_V1_1
+const {
+  installLiveSoulRouteWatcher
+} = require("./core/edge-soul-live-route-watcher.cjs"); // DAVID_SOUL_LIVE_ROUTE_WATCHER_V1
 const { validateSoulChatUrl } = require("./core/soul-relay-runtime-v3.cjs");
 
-// DAVID SOUL uses Microsoft Edge for the visible GPT session. The Electron
-// process is only a background coordinator, so GPU and audio devices are not
-// required. Disabling both before app readiness prevents Windows GPU/audio
-// crash loops when several isolated workers run at the same time.
+// DAVID SOUL uses Microsoft Edge for the visible GPT session and does not need
+// Electron GPU rendering. Disabling it before app readiness prevents Windows GPU
+// process crash loops when multiple isolated workers run at the same time.
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
 app.commandLine.appendSwitch("disable-gpu-compositing");
-app.commandLine.appendSwitch("disable-audio-output");
-app.commandLine.appendSwitch("mute-audio");
-app.commandLine.appendSwitch(
-  "disable-features",
-  "AudioServiceOutOfProcess,HardwareMediaKeyHandling,MediaSessionService"
-);
 
 installPersistentSoulSession();
-installReliableSoulSendConfirmation();
+// DAVID_LEGACY_PROMPT_VERIFY_DISABLED - base CDP sender verifies the submitted turn.
 installEdgeSoulRecovery();
+installCompletedSoulAnswerDetection();
+
+const davidSoulTurnFinalizerV4 = installDavidSoulTurnFinalizerV4(); // DAVID_TURN_FINALIZER_V4_CALL
+console.log("[DAVID SOUL] TURN FINALIZER V4 installed", davidSoulTurnFinalizerV4);
 
 const instanceId = String(process.env.DAVID_SOUL_INSTANCE_ID || "default")
   .trim()
@@ -42,6 +54,32 @@ const instanceId = String(process.env.DAVID_SOUL_INSTANCE_ID || "default")
   .replace(/[^a-z0-9_-]/g, "-")
   .slice(0, 80) || "default";
 const multiInstance = process.env.DAVID_SOUL_MULTI_INSTANCE === "1";
+// DAVID_FIXED_ROUTE_ONE_TAB_V1
+// Each isolated instance owns exactly one configured conversation. The former
+// live route watcher registered every server route in every instance, which
+// created an unbounded number of tabs during login and route synchronization.
+// Dynamic route registration stays disabled; jobs use the instance's fixed URL.
+const davidLiveRouteWatcher = {
+  installed: false,
+  fixed_route_mode: true,
+  reason: "one-fixed-conversation-per-instance"
+};
+console.log("[DAVID SOUL] LIVE ROUTE WATCHER", davidLiveRouteWatcher);
+
+const davidSoulAnchor2 = installDavidSoulAnchor2({ rootDir: __dirname });
+console.log("[DAVID SOUL] Anchor 2 candidate installed", davidSoulAnchor2);
+const davidSoulMasterEdge = installDavidSoulMasterEdge({ rootDir: __dirname });
+console.log("[DAVID SOUL] MASTER EDGE installed", davidSoulMasterEdge);
+const davidSoulWholeTurnReturn = installDavidSoulWholeTurnReturn({ rootDir: __dirname });
+console.log("[DAVID SOUL] WHOLE TURN RETURN installed", davidSoulWholeTurnReturn);
+const davidSoulNetworkShield = installDavidSoulNetworkShield();
+console.log("[DAVID SOUL] NETWORK SHIELD installed", davidSoulNetworkShield);
+const davidSoulCompletionProof = { version: "disabled-stable-v4", installed: false, reason: "V4 + WholeTurn are authoritative" };
+console.log("[DAVID SOUL] COMPLETION PROOF installed", davidSoulCompletionProof);
+const davidSoulAutoReconnect = installDavidSoulAutoReconnect();
+console.log("[DAVID SOUL] AUTO RECONNECT installed", davidSoulAutoReconnect);
+const davidSoulAutoReconnectV11 = installDavidSoulAutoReconnectV11();
+console.log("[DAVID SOUL] AUTO RECONNECT v1.1 installed", davidSoulAutoReconnectV11);
 const gotSingleInstanceLock = multiInstance
   ? true
   : app.requestSingleInstanceLock({ mode: "soul", instance_id: instanceId });
@@ -57,6 +95,8 @@ let lastStatus = null;
 let lastConsoleStatusSignature = "";
 let lastConsoleStatusAt = 0;
 
+const davidFastBrainIO = installDavidFastBrainIO(); // DAVID_FAST_BRAIN_IO_V1_CALL
+console.log("[DAVID SOUL] FAST BRAIN I/O installed", davidFastBrainIO);
 function clean(value, max = 2000) {
   return String(value ?? "").trim().slice(0, max);
 }
@@ -114,9 +154,49 @@ function writeStatus(state, message, kind = "info", meta = {}) {
     updated_at: new Date().toISOString()
   };
 
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(payload, null, 2), "utf8");
-  fs.renameSync(temporary, file);
+  // DAVID_STATUS_WRITE_SAFE_V1
+  //
+  // Status persistence must NEVER kill a GPT route.
+  // Use a unique temp filename and tolerate Windows rename races.
+
+  const serialized = JSON.stringify(payload, null, 2);
+
+  const temporary =
+    `${file}.${process.pid}.${Date.now()}.` +
+    `${Math.random().toString(16).slice(2)}.tmp`;
+
+  try {
+    fs.writeFileSync(temporary, serialized, "utf8");
+
+    try {
+      fs.renameSync(temporary, file);
+    } catch (error) {
+      const code = String(error?.code || "");
+
+      if (!["EPERM", "EACCES", "EEXIST"].includes(code)) {
+        throw error;
+      }
+
+      // Windows may temporarily lock the destination.
+      // The in-memory status remains authoritative.
+      try {
+        fs.writeFileSync(file, serialized, "utf8");
+      } catch {}
+
+      try {
+        fs.unlinkSync(temporary);
+      } catch {}
+    }
+  } catch (error) {
+    // A status-file problem is telemetry only.
+    // It must never interrupt SOUL -> GPT -> SOUL.
+    try {
+      if (fs.existsSync(temporary)) {
+        fs.unlinkSync(temporary);
+      }
+    } catch {}
+  }
+
   lastStatus = payload;
   return payload;
 }
@@ -169,7 +249,7 @@ async function boot() {
   );
 
   relay = new LiveSoulRelay({ BrowserWindow, sendStatus });
-  relay.browser = new EdgeSoulBrowserAgent({
+  relay.browser = new EdgeSoulMultiSessionAgent({
     sendStatus,
     chatUrl,
     rootDir
@@ -177,7 +257,7 @@ async function boot() {
 
   writeStatus(
     "opening_gpt",
-    `DAVID instance '${instanceId}' is loading its saved ChatGPT login and fixed session.`,
+    `DAVID instance '${instanceId}' is loading its saved ChatGPT login and multi-session router.`,
     "working",
     { stage: "loading_saved_login" }
   );
@@ -186,18 +266,33 @@ async function boot() {
 
   writeStatus(
     "gpt_ready",
-    `DAVID instance '${instanceId}' has its own saved login and fixed GPT session ready.`,
+    `DAVID instance '${instanceId}' has its primary saved login and GPT route ready.`,
     "ready",
     { stage: "gpt_ready" }
   );
 
-  await relay.start();
+  // DAVID_THINKER_WORKER_V1
+  // MITKO 9333 is the only Soul queue consumer. DAVID 9444 remains attached
+  // to the fixed Thinker conversation and is driven by the isolated local
+  // Teacher/PowerShell worker. This prevents both ports from racing to claim
+  // the same Soul message.
+  const thinkerOnly = instanceId === "david" ||
+    process.env.DAVID_THINKER_ONLY === "1";
 
-  sendStatus(
-    `DAVID SOUL instance '${instanceId}' is active: Twins -> isolated Edge -> fixed GPT chat -> Twins.`,
-    "ready",
-    { stage: "relay_ready" }
-  );
+  if (thinkerOnly) {
+    sendStatus(
+      `DAVID instance '${instanceId}' is ready as the fixed Thinker + PowerShell Worker on port 9444.`,
+      "ready",
+      { stage: "thinker_worker_ready" }
+    );
+  } else {
+    await relay.start();
+    sendStatus(
+      `DAVID SOUL instance '${instanceId}' is active: Soul -> Thinker -> Worker -> Soul.`,
+      "ready",
+      { stage: "relay_ready" }
+    );
+  }
 }
 
 if (!multiInstance) {
@@ -219,7 +314,7 @@ app.on("before-quit", () => {
     { stage: "stopping" }
   );
   relay?.stop?.();
-  relay?.browser?.connection?.close?.();
+  relay?.browser?.close?.();
 });
 
 app.on("window-all-closed", () => {

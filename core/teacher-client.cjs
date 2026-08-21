@@ -1,8 +1,36 @@
-"use strict";
+﻿"use strict";
 
 const { SupabaseBridge } = require("./supabase-bridge.cjs");
 const { createDemoPlan } = require("./demo-teacher.cjs");
 const { validateSkill } = require("./skill-schema.cjs");
+
+const MAX_APPROVED_TEACHER_LESSONS = 20;
+const MAX_APPROVED_TEACHER_LESSON_CHARS = 8000;
+
+function buildTeacherContext(context, approvedLessons) {
+ const safeLessons = [];
+ let lessonChars = 0;
+
+ for (const lesson of approvedLessons || []) {
+ if (!lesson || lesson.status !== 'approved') continue;
+ const triggerText = String(lesson.trigger_text || '');
+ const lessonText = String(lesson.lesson_text || '');
+ if (!lessonText.trim()) continue;
+ const size = triggerText.length + lessonText.length;
+ if (safeLessons.length >= MAX_APPROVED_TEACHER_LESSONS || lessonChars + size > MAX_APPROVED_TEACHER_LESSON_CHARS) break;
+ safeLessons.push({ trigger_text: triggerText, lesson_text: lessonText });
+ lessonChars += size;
+ }
+
+ if (safeLessons.length === 0) return context;
+
+ return {
+ ...(context && typeof context === 'object' && !Array.isArray(context)
+ ? context
+ : { base_context: context || null }),
+ approved_twin_teacher_lessons: safeLessons
+ };
+}
 
 class TeacherClient {
   constructor({ config, store, sendStatus }) {
@@ -16,7 +44,7 @@ class TeacherClient {
   async initialize(onRemoteJob) {
     if (!this.bridge.isConfigured()) {
       this.sendStatus(
-        "DAVID работи в local demo режим · legacy Supabase Teacher не е настроен",
+        "DAVID СЂР°Р±РѕС‚Рё РІ local demo СЂРµР¶РёРј В· legacy Supabase Teacher РЅРµ Рµ РЅР°СЃС‚СЂРѕРµРЅ",
         "warning"
       );
       return;
@@ -24,11 +52,11 @@ class TeacherClient {
 
     try {
       this.connected = await this.bridge.initialize(onRemoteJob);
-      this.sendStatus("DAVID legacy Teacher е свързан със Supabase", "ready");
+      this.sendStatus("DAVID legacy Teacher Рµ СЃРІСЉСЂР·Р°РЅ СЃСЉСЃ Supabase", "ready");
     } catch (error) {
       this.connected = false;
       this.sendStatus(
-        `Legacy Supabase Teacher е недостъпен; DAVID продължава локално: ${error.message}`,
+        `Legacy Supabase Teacher Рµ РЅРµРґРѕСЃС‚СЉРїРµРЅ; DAVID РїСЂРѕРґСЉР»Р¶Р°РІР° Р»РѕРєР°Р»РЅРѕ: ${error.message}`,
         "warning"
       );
     }
@@ -51,13 +79,16 @@ class TeacherClient {
       return plan;
     }
 
-    let id = requestId;
+ const approvedLessons = await this.bridge.fetchApprovedTeacherLessons();
+ const teacherContext = buildTeacherContext(context, approvedLessons);
 
-    if (!id) {
-      id = await this.bridge.createTrainingRequest(command, context);
-    }
+ let id = requestId;
 
-    this.sendStatus("GPT Teacher създава нов skill...", "training");
+ if (!id) {
+ id = await this.bridge.createTrainingRequest(command, teacherContext);
+ }
+
+    this.sendStatus("GPT Teacher СЃСЉР·РґР°РІР° РЅРѕРІ skill...", "training");
 
     const response = await this.bridge.invokeTeacher({
       request_id: id,
@@ -101,4 +132,4 @@ class TeacherClient {
   }
 }
 
-module.exports = { TeacherClient };
+module.exports = { TeacherClient, buildTeacherContext };

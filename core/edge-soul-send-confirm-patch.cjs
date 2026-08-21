@@ -101,7 +101,11 @@ function installReliableSoulSendConfirmation() {
       const generating = Boolean(document.querySelector(
         'button[data-testid="stop-button"], [data-is-streaming="true"], .result-streaming, [class*="result-streaming"]'
       ));
-      const body = clean(document.body?.innerText || '').toLowerCase();
+      // DAVID_PAGE_ERROR_IGNORE_CHAT_HISTORY_V1
+const __davidErrorBody = document.body?.cloneNode(true);
+__davidErrorBody?.querySelectorAll?.('[data-message-author-role]')
+  .forEach((el) => el.remove());
+const body = clean(__davidErrorBody?.innerText || '').toLowerCase();
       let pageError = '';
       if (body.includes('something went wrong')) pageError = 'ChatGPT showed Something went wrong.';
       else if (body.includes('network error')) pageError = 'ChatGPT showed a network error.';

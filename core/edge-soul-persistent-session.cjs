@@ -17,10 +17,15 @@ function writeSessionState(agent, state, details = {}) {
   try {
     const systemDir = path.join(agent.rootDir, ".david-system");
     fs.mkdirSync(systemDir, { recursive: true });
-    const file = path.join(systemDir, "soul-login-state.json");
+    const sessionKey = String(agent.sessionKey || "default")
+      .trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 80) || "default";
+    const file = path.join(systemDir, `soul-login-state-${sessionKey}.json`);
     const payload = {
       state,
       profile_dir: agent.profileDir,
+      session_key: sessionKey,
+      session_label: agent.sessionLabel || sessionKey,
+      debug_port: agent.port,
       fixed_chat_url: agent.chatUrl,
       updated_at: new Date().toISOString(),
       ...details
@@ -42,7 +47,16 @@ function installPersistentSoulSession() {
       "--no-default-browser-check",
       "--disable-guest-mode",
       "--disable-features=msEdgeSidebarV2",
+      "--disable-extensions",
+      "--disable-gpu",
+      "--disable-gpu-compositing",
+      "--process-per-site",
+      // DAVID_BACKGROUND_EDGE_V1: keep the dedicated DAVID browser alive without a visible window.
       "--new-window",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+      "--window-size=1280,900",
       this.chatUrl
     ];
 
@@ -54,16 +68,32 @@ function installPersistentSoulSession() {
     this.edgeProcess.unref();
 
     writeSessionState(this, "edge_started", {
-      debug_address: `127.0.0.1:${this.port}`
+      debug_address: `127.0.0.1:${this.port}`,
+      session_key: this.sessionKey
     });
   };
 
   EdgeSoulBrowserAgent.prototype.diagnostics = async function persistentDiagnostics() {
     const value = await this.evaluate(`(() => {
       const clean = (value) => String(value || '').trim();
-      const prompt = document.querySelector(
-        '#prompt-textarea, [data-testid="prompt-textarea"], [contenteditable="true"][role="textbox"], textarea'
-      );
+      const visible = (element) => {
+        if (!element || !(element instanceof Element)) return false;
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+          Number(style.opacity || 1) > 0 && rect.width >= 120 && rect.height >= 20 &&
+          rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+      };
+      const selectors = [
+        '#prompt-textarea', '[data-testid="prompt-textarea"]',
+        '[contenteditable="true"][role="textbox"]',
+        '[contenteditable="true"][data-virtualkeyboard]',
+        '[contenteditable="true"].ProseMirror', 'form [contenteditable="true"]',
+        'textarea[data-id="root"]', 'textarea[placeholder]', 'textarea'
+      ];
+      const prompts = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)))
+        .filter((element, index, all) => all.indexOf(element) === index)
+        .filter((element) => visible(element) && !element.matches('[disabled], [aria-disabled="true"]'));
       const body = clean(document.body?.innerText || '');
       const pathname = String(location.pathname || '');
       const explicitLoginControl = Array.from(document.querySelectorAll('a,button')).some((element) => {
@@ -79,7 +109,7 @@ function installPersistentSoulSession() {
       return {
         url: location.href,
         title: document.title,
-        promptCount: prompt ? 1 : 0,
+        promptCount: prompts.length,
         bodyLength: body.length,
         authPage: /\\/auth\\/|\\/login|\\/onboarding|\\/welcome/i.test(pathname),
         explicitLoginControl,

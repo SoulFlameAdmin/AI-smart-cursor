@@ -9,6 +9,8 @@ param(
   [ValidateRange(1024, 65535)]
   [int]$PreferredDebugPort = 9333,
 
+  [switch]$StrictDebugPort,
+
   [switch]$RunTests,
   [switch]$OpenTwins,
   [ValidateRange(30, 600)][int]$StartupTimeoutSeconds = 120
@@ -153,14 +155,32 @@ function Write-Mode {
     worker_pid_file = $workerPidFile
     updated_at = (Get-Date).ToUniversalTime().ToString('o')
   }
-  $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $modeFile -Encoding UTF8
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $modeFile) | Out-Null
+  # DAVID_MODE_WRITE_RETRY_V1
+  $__davidModeJson = $payload | ConvertTo-Json -Depth 5
+  $__davidModeWritten = $false
+  for ($__davidModeAttempt = 1; $__davidModeAttempt -le 50; $__davidModeAttempt++) {
+    try {
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $modeFile) | Out-Null
+      [System.IO.File]::WriteAllText($modeFile, $__davidModeJson, [System.Text.UTF8Encoding]::new($false))
+      $__davidModeWritten = $true
+      break
+    } catch [System.IO.IOException] {
+      Start-Sleep -Milliseconds 100
+    } catch [System.UnauthorizedAccessException] {
+      Start-Sleep -Milliseconds 100
+    }
+  }
+  if (-not $__davidModeWritten) {
+    Write-Warning "mode.json is temporarily locked; DAVID continues running. State will retry on the next update."
+  }
 }
 
 function Write-LiveLine {
   param([string]$Line)
   if ($Line -match '\[ERROR\]|failed|exception|fatal|Owner mismatch') {
     Write-Host "[$($instance.ToUpperInvariant())] $Line" -ForegroundColor Red
-  } elseif ($Line -match '\[READY\]|mode is active|waiting for SOUL|чакам въпроси') {
+  } elseif ($Line -match '\[READY\]|mode is active|waiting for SOUL|ready|login is active') {
     Write-Host "[$($instance.ToUpperInvariant())] $Line" -ForegroundColor Green
   } elseif ($Line -match '\[WORKING\]') {
     Write-Host "[$($instance.ToUpperInvariant())] $Line" -ForegroundColor Cyan
@@ -186,8 +206,8 @@ $twinsUrl = Get-ConfigValue -Name 'DAVID_TWINS_SOUL_URL'
 if ($chatUrl -notmatch '^https://chatgpt\.com/c/[A-Za-z0-9-]+(?:[/?#].*)?$') {
   throw "Instance '$instance' has no valid fixed ChatGPT conversation URL."
 }
-if ($userId -notmatch '^[0-9a-fA-F-]{36}$') {
-  throw "Instance '$instance' has no valid SOUL user id."
+if ($userId -and $userId -notmatch '^[0-9a-fA-F-]{36}$') {
+  throw "Instance '$instance' has an invalid optional SOUL user id."
 }
 if (-not $supabaseUrl) { throw 'SUPABASE_URL is missing.' }
 if (-not $deviceToken -or $deviceToken.Length -lt 32) {
@@ -209,6 +229,9 @@ if (Test-Path -LiteralPath $modeFile) {
 Stop-OnlyThisInstance -DebugPort $previousPort
 
 $debugPort = Get-FreeDebugPort -Preferred $PreferredDebugPort
+if ($StrictDebugPort -and $debugPort -ne $PreferredDebugPort) {
+  throw "Required debug port $PreferredDebugPort is occupied by another process."
+}
 Remove-Item -LiteralPath $statusFile, $stdoutLog, $stderrLog -Force -ErrorAction SilentlyContinue
 
 if (-not (Test-Path -LiteralPath $electronExe)) {
@@ -326,13 +349,13 @@ try {
   }
 } finally {
   Write-Host "[$($instance.ToUpperInvariant())] Stopping only this DAVID instance." -ForegroundColor Yellow
-  Stop-ProcessSafe -Id $worker.Id
+  if (-not $worker.HasExited) { Stop-ProcessSafe -Id $worker.Id }
   Stop-OnlyThisInstance -DebugPort $debugPort
   Write-Mode -Port $debugPort -State 'stopped'
 }
 
 $worker.Refresh()
-if ($worker.HasExited -and $worker.ExitCode -ne 0) {
+if ($worker.HasExited -and $null -ne $worker.ExitCode -and $worker.ExitCode -ne 0) {
   if (Test-Path -LiteralPath $stderrLog) {
     Get-Content -LiteralPath $stderrLog -Tail 100 -Encoding UTF8
   }

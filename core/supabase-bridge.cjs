@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 
 const os = require("os");
 const { createClient } = require("@supabase/supabase-js");
@@ -57,7 +57,7 @@ class SupabaseBridge {
         const response = await this.client.auth.signInAnonymously();
         if (response.error) {
           throw new Error(
-            `Supabase входът се провали. Включи Anonymous Sign-ins или добави DAVID_USER_EMAIL/PASSWORD. ${response.error.message}`
+            `Supabase РІС…РѕРґСЉС‚ СЃРµ РїСЂРѕРІР°Р»Рё. Р’РєР»СЋС‡Рё Anonymous Sign-ins РёР»Рё РґРѕР±Р°РІРё DAVID_USER_EMAIL/PASSWORD. ${response.error.message}`
           );
         }
         session = response.data.session;
@@ -110,7 +110,7 @@ class SupabaseBridge {
 
             await onRemoteJob({ job, skill });
           } catch (error) {
-            this.sendStatus(`Realtime job грешка: ${error.message}`, "error");
+            this.sendStatus(`Realtime job РіСЂРµС€РєР°: ${error.message}`, "error");
           }
         }
       )
@@ -196,7 +196,20 @@ class SupabaseBridge {
     return response.data.id;
   }
 
-  async fetchVerifiedSkills() {
+  async fetchApprovedTeacherLessons() {
+ if (!this.client || !this.user) return [];
+
+ const response = await this.client
+ .from('sf_twin_teacher_lessons')
+ .select('id, trigger_text, lesson_text, status, created_at')
+ .eq('status', 'approved')
+ .order('created_at', { ascending: true });
+
+ if (response.error) throw response.error;
+ return response.data || [];
+ }
+
+ async fetchVerifiedSkills() {
     if (!this.client || !this.user) return [];
 
     const response = await this.client
@@ -245,3 +258,4 @@ class SupabaseBridge {
 }
 
 module.exports = { SupabaseBridge };
+
