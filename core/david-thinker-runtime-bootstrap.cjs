@@ -75,7 +75,7 @@ function safeTail(filePath, maxChars = 4000) {
     if (!fs.existsSync(filePath)) return "";
     const value = fs.readFileSync(filePath, "utf8");
     return value.slice(-maxChars)
-      .replace(/(?i)(token|secret|password|authorization|api[_-]?key)\s*[:=]\s*\S+/g, "$1=[REDACTED]");
+      .replace(/(token|secret|password|authorization|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[REDACTED]");
   } catch {
     return "";
   }
