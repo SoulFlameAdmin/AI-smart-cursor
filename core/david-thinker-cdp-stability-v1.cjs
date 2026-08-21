@@ -4,11 +4,14 @@ const {
   CdpConnection
 } = require("./edge-cdp-soul-browser.cjs");
 
-const VERSION = "david-thinker-cdp-stability-v1";
+const VERSION = "david-thinker-cdp-stability-v1.1";
 const OPTIONAL_COMMANDS = new Set([
   "Runtime.enable",
   "Page.enable",
   "Page.bringToFront"
+]);
+const MIN_COMMAND_TIMEOUT_MS = new Map([
+  ["Runtime.evaluate", 60000]
 ]);
 
 function isThinkerProcess(argv = process.argv) {
@@ -70,13 +73,26 @@ function installDavidThinkerCdpStabilityV1() {
       });
     }
 
-    return originalSend.call(this, method, params, timeoutMs);
+    // DAVID_THINKER_RUNTIME_EVALUATE_TIMEOUT_V1
+    // ChatGPT's page can be temporarily busy enough that a valid
+    // Runtime.evaluate response arrives after the generic 15 second watchdog.
+    // Do NOT retry Runtime.evaluate because some expressions can intentionally
+    // mutate the composer or press Send. Only extend the single real command's
+    // deadline so DAVID never duplicates a state-changing evaluation.
+    const minimumTimeout = MIN_COMMAND_TIMEOUT_MS.get(name) || 0;
+    const effectiveTimeoutMs = Math.max(
+      Number(timeoutMs) || 15000,
+      minimumTimeout
+    );
+
+    return originalSend.call(this, method, params, effectiveTimeoutMs);
   };
 
   return {
     version: VERSION,
     installed: true,
-    optional_commands_skipped: [...OPTIONAL_COMMANDS]
+    optional_commands_skipped: [...OPTIONAL_COMMANDS],
+    minimum_command_timeouts_ms: Object.fromEntries(MIN_COMMAND_TIMEOUT_MS)
   };
 }
 
@@ -85,6 +101,7 @@ const installation = installDavidThinkerCdpStabilityV1();
 module.exports = {
   VERSION,
   OPTIONAL_COMMANDS,
+  MIN_COMMAND_TIMEOUT_MS,
   installation,
   installDavidThinkerCdpStabilityV1,
   isThinkerProcess
