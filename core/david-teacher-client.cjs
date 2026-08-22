@@ -7,6 +7,7 @@ const { spawn } = require("child_process");
 const { ensureThinkerRuntime } = require("./david-thinker-runtime-bootstrap.cjs");
 
 const AUTONOMOUS_TRIGGER = /^\s*@sfadmin\b/iu;
+const AUTONOMOUS_INNER_GOAL = /^DAVID AUTONOMOUS ORCHESTRATOR V1\b/u;
 
 const TRIGGER_PATTERNS = [
   /^\s*@worker\b\s*[:\-]?\s*/i,
@@ -17,6 +18,10 @@ const TRIGGER_PATTERNS = [
 
 function isAutonomousGoal(value) {
   return AUTONOMOUS_TRIGGER.test(String(value || "").trim());
+}
+
+function isAutonomousInnerGoal(value) {
+  return AUTONOMOUS_INNER_GOAL.test(String(value || "").trim());
 }
 
 function extractTeacherGoal(value) {
@@ -41,6 +46,14 @@ function writeJsonAtomic(filePath, value) {
   const temporary = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2), "utf8");
   fs.renameSync(temporary, filePath);
+}
+
+function boundedAutonomousGptTimeoutMs() {
+  const value = Number.parseInt(
+    process.env.DAVID_AUTONOMOUS_GPT_RESPONSE_TIMEOUT_MS || "720000",
+    10
+  );
+  return Math.max(240000, Math.min(900000, Number.isFinite(value) ? value : 720000));
 }
 
 async function runAutonomousWorkerGoal({
@@ -136,6 +149,8 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
   }
 
   const root = path.resolve(projectRoot || path.resolve(__dirname, ".."));
+  const workerGoal = String(goal || "").trim();
+  const autonomousWorker = isAutonomousInnerGoal(workerGoal);
   const thinkerChatUrl = process.env.DAVID_TEACHER_CHAT_URL ||
     "https://chatgpt.com/c/6a81285a-3e38-83ed-965a-b221453fb742";
   const thinkerPort = 9444;
@@ -162,8 +177,11 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
   writeJsonAtomic(requestFile, {
     protocol: "david_teacher_worker_v1",
     id,
-    goal: String(goal || "").trim(),
+    goal: workerGoal,
     max_rounds: 8,
+    autonomous_task: autonomousWorker,
+    auto_approve_repository_powershell: autonomousWorker,
+    gpt_response_timeout_ms: autonomousWorker ? boundedAutonomousGptTimeoutMs() : null,
     result_file: resultFile,
     progress_file: progressFile,
     created_at: new Date().toISOString()
@@ -177,15 +195,26 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
     let stdout = "";
     let stderr = "";
     let settled = false;
+    const childEnv = {
+      ...process.env,
+      DAVID_REPOSITORY_ROOT: root,
+      DAVID_TEACHER_CHAT_URL: thinkerChatUrl,
+      DAVID_TEACHER_EDGE_PORT: String(thinkerPort)
+    };
+
+    // DAVID_AUTONOMOUS_REPOSITORY_POLICY_V1
+    // Only orchestrator-generated inner goals receive the scoped repository
+    // autonomy grant and the longer Thinker response window. Teacher risk
+    // classification remains authoritative for every actual action.
+    if (autonomousWorker) {
+      childEnv.DAVID_AUTO_APPROVE_REPOSITORY_POWERSHELL = "true";
+      childEnv.DAVID_GPT_RESPONSE_TIMEOUT_MS = String(boundedAutonomousGptTimeoutMs());
+    }
+
     const child = spawn(nodeExecutable, [workerFile, "--request", requestFile], {
       cwd: root,
       windowsHide: true,
-      env: {
-        ...process.env,
-        DAVID_REPOSITORY_ROOT: root,
-        DAVID_TEACHER_CHAT_URL: thinkerChatUrl,
-        DAVID_TEACHER_EDGE_PORT: String(thinkerPort)
-      }
+      env: childEnv
     });
 
     // DAVID_PARENT_LIVE_EVENT_FORWARDER_V14
@@ -255,10 +284,13 @@ async function runTeacherWorkerGoal({ goal, projectRoot, sendStatus, onProgress 
 }
 
 module.exports = {
+  AUTONOMOUS_INNER_GOAL,
   AUTONOMOUS_TRIGGER,
   TRIGGER_PATTERNS,
+  boundedAutonomousGptTimeoutMs,
   extractTeacherGoal,
   isAutonomousGoal,
+  isAutonomousInnerGoal,
   runAutonomousWorkerGoal,
   runTeacherWorkerGoal
 };
