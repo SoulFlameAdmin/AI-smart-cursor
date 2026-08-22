@@ -66,6 +66,14 @@ function loadConfig() {
       process.env.DAVID_AUTO_APPROVE_SAFE_POWERSHELL,
       false
     ),
+    // DAVID_AUTONOMOUS_REPOSITORY_POLICY_V1
+    // The autonomous route may opt into repository-only low/medium actions.
+    // The Teacher risk classifier still blocks secrets, destructive delete,
+    // system changes, external paths, publishing and git push/merge/rebase.
+    autoApproveRepositoryPowerShell: parseBoolean(
+      process.env.DAVID_AUTO_APPROVE_REPOSITORY_POWERSHELL,
+      false
+    ),
     deviceBridgeFunction:
       process.env.DAVID_DEVICE_BRIDGE_FUNCTION || "david-device-bridge",
     deviceToken: process.env.DAVID_DEVICE_TOKEN || ""
