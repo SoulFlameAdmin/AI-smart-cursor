@@ -62,6 +62,8 @@ Write-Host '[3/5] Running autonomous runtime contracts.' -ForegroundColor Cyan
 if (-not $SkipTests) {
   & $node.Source (Join-Path $root 'tests\thinker-cdp-stability-v1.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Thinker CDP stability contract failed.' }
+  & $node.Source (Join-Path $root 'tests\thinker-keeper-singleton-v1.cjs')
+  if ($LASTEXITCODE -ne 0) { throw 'Thinker keeper singleton contract failed.' }
   & $node.Source (Join-Path $root 'tests\autonomous-thinker-bootstrap-v1.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Thinker bootstrap contract failed.' }
   & $node.Source (Join-Path $root 'tests\autonomous-orchestrator-v1.cjs')
@@ -96,6 +98,20 @@ if ($portReady) {
 } else {
   Write-Host '[WARN] Thinker 9444 is not ready yet. Check the Edge login window; autonomous bootstrap will keep checking.' -ForegroundColor Yellow
 }
+
+# DAVID_THINKER_KEEPER_SINGLETON_V1 startup proof.
+$keeperProcesses = @(
+  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.Name -eq 'node.exe' -and
+    $_.CommandLine -like '*david-thinker-node-keeper.cjs*'
+  }
+)
+if ($keeperProcesses.Count -ne 1) {
+  $ids = ($keeperProcesses | ForEach-Object { $_.ProcessId }) -join ','
+  throw "DAVID Thinker keeper singleton violation: count=$($keeperProcesses.Count) pids=$ids"
+}
+Write-Host "[OK] Thinker keeper singleton verified: PID $($keeperProcesses[0].ProcessId)." -ForegroundColor Green
 
 Write-Host '[5/5] Starting SOUL Node on 9333.' -ForegroundColor Cyan
 Write-Host 'Keep this PowerShell open. Ctrl+C stops SOUL; Thinker can be restarted automatically.' -ForegroundColor DarkCyan
