@@ -64,6 +64,8 @@ if (-not $SkipTests) {
   if ($LASTEXITCODE -ne 0) { throw 'Thinker CDP stability contract failed.' }
   & $node.Source (Join-Path $root 'tests\thinker-keeper-singleton-v1.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Thinker keeper singleton contract failed.' }
+  & $node.Source (Join-Path $root 'tests\autonomous-worker-policy-v1.cjs')
+  if ($LASTEXITCODE -ne 0) { throw 'Autonomous worker policy contract failed.' }
   & $node.Source (Join-Path $root 'tests\autonomous-thinker-bootstrap-v1.cjs')
   if ($LASTEXITCODE -ne 0) { throw 'Thinker bootstrap contract failed.' }
   & $node.Source (Join-Path $root 'tests\autonomous-orchestrator-v1.cjs')
