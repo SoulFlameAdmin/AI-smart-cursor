@@ -14,13 +14,91 @@ const profileDir = process.env.DAVID_THINKER_PROFILE_DIR ||
   path.join(rootDir, ".david-instances", "david", "edge-soul-profile");
 const statusFile = process.env.DAVID_THINKER_STATUS_FILE ||
   path.join(rootDir, ".david-instances", "david", "thinker-node-status.json");
+const singletonFile = process.env.DAVID_THINKER_SINGLETON_FILE ||
+  path.join(rootDir, ".david-instances", "david", "thinker-node.singleton.json");
 
 let browser = null;
 let stopping = false;
 let booting = false;
+let singletonOwned = false;
 
 function clean(value, max = 1500) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function processAlive(pid) {
+  const numeric = Number(pid);
+  if (!Number.isInteger(numeric) || numeric <= 0) return false;
+  try {
+    process.kill(numeric, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readSingleton() {
+  try {
+    if (!fs.existsSync(singletonFile)) return null;
+    return JSON.parse(fs.readFileSync(singletonFile, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function acquireSingleton() {
+  // DAVID_THINKER_KEEPER_SINGLETON_V1
+  // Only one keeper may supervise the fixed 9444 Thinker profile. A brief
+  // port outage must not create additional keeper processes racing over the
+  // same ChatGPT tab/profile.
+  fs.mkdirSync(path.dirname(singletonFile), { recursive: true });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = fs.openSync(singletonFile, "wx");
+      try {
+        fs.writeFileSync(fd, JSON.stringify({
+          runtime: "david_thinker_node_keeper_v1",
+          singleton: "DAVID_THINKER_KEEPER_SINGLETON_V1",
+          pid: process.pid,
+          port,
+          profile_dir: profileDir,
+          started_at: new Date().toISOString()
+        }, null, 2), "utf8");
+      } finally {
+        fs.closeSync(fd);
+      }
+      singletonOwned = true;
+      return true;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+
+      const owner = readSingleton();
+      if (processAlive(owner?.pid)) {
+        console.log(
+          `[DAVID THINKER NODE][READY] keeper singleton already owned by PID ${owner.pid}; duplicate exits.`
+        );
+        return false;
+      }
+
+      // Stale lock from a dead keeper. Remove only this repository-local
+      // singleton file, then retry one atomic create.
+      try { fs.unlinkSync(singletonFile); } catch {}
+    }
+  }
+
+  throw new Error("DAVID Thinker keeper could not acquire singleton ownership.");
+}
+
+function releaseSingleton() {
+  if (!singletonOwned) return;
+  try {
+    const owner = readSingleton();
+    if (Number(owner?.pid) === process.pid && fs.existsSync(singletonFile)) {
+      fs.unlinkSync(singletonFile);
+    }
+  } catch {}
+  singletonOwned = false;
 }
 
 function writeStatus(state, message, kind = "working", meta = {}) {
@@ -136,26 +214,36 @@ async function shutdown(signal) {
     { stage: "thinker_node_stopping" }
   );
   try { browser?.connection?.close?.(); } catch {}
+  releaseSingleton();
   process.exit(0);
 }
 
 process.once("SIGINT", () => void shutdown("SIGINT"));
 process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("exit", releaseSingleton);
 
 if (require.main === module) {
-  boot()
-    .then(() => healthLoop())
-    .catch(() => {
-      process.exitCode = 1;
-    });
+  if (!acquireSingleton()) {
+    process.exit(0);
+  } else {
+    boot()
+      .then(() => healthLoop())
+      .catch(() => {
+        process.exitCode = 1;
+      });
+  }
 }
 
 module.exports = {
+  acquireSingleton,
   boot,
   chatUrl,
   port,
   profileDir,
+  processAlive,
+  releaseSingleton,
   sendStatus,
+  singletonFile,
   statusFile,
   writeStatus
 };
