@@ -28,6 +28,10 @@ const contractTask = createAutonomousTask("@sfadmin napravi kontrolirana promqna
 });
 const teacherGoal = buildAutonomousTeacherGoal(contractTask, { attempt: 2 });
 assert.match(teacherGoal, /DAVID AUTONOMOUS ORCHESTRATOR V1/u);
+assert.match(teacherGoal, /LOCAL EXECUTOR CONTRACT/u);
+assert.match(teacherGoal, /real local DAVID PowerShell executor is attached/u);
+assert.match(teacherGoal, /run_powershell_upgrade/u);
+assert.match(teacherGoal, /Never return blocked merely because the ChatGPT UI itself has no shell\/tool access/u);
 assert.match(teacherGoal, /A failed test is not task completion/u);
 assert.match(teacherGoal, /stdout, stderr, exit_code/u);
 assert.match(teacherGoal, /Return completed only after/u);
