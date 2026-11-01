@@ -125,8 +125,7 @@ async function buildManagerReport(config,opts={}) {
 function formatReport(r) {
   const lines=["DAVID MANAGER · "+r.generated_at,"Режим: реални проверки и предложения; БЕЗ автоматични промени."];
   for (const p of r.projects) {
-    lines.push("
-"+p.name+": "+p.source_status+(p.default_branch?" ["+p.default_branch+"]":""));
+    lines.push("\n"+p.name+": "+p.source_status+(p.default_branch?" ["+p.default_branch+"]":""));
     if (p.latest_commit) lines.push("Последен commit: "+(p.latest_commit.date||"неизвестно")+" · "+p.latest_commit.sha.slice(0,7));
     if (p.open_prs.length) lines.push("Отворени PR: "+p.open_prs.length);
     if (p.reason) lines.push("Бележка: "+p.reason);
@@ -134,18 +133,15 @@ function formatReport(r) {
   lines.push("
 Следващи предложения: "+r.proposed_tasks.length);
   for (const p of r.proposed_tasks) lines.push("• "+p.project_id+": "+p.title+" · "+(p.requires_approval?"изисква одобрение":"само проверка"));
-  if (r.planner_warning) lines.push("
-"+r.planner_warning);
+  if (r.planner_warning) lines.push("\n"+r.planner_warning);
   lines.push("Нито една предложена задача не е изпълнена или одобрена автоматично.");
-  return lines.join("
-");
+  return lines.join("\n");
 }
 function saveReport(output, report) {
   const target=path.resolve(output);
   fs.mkdirSync(path.dirname(target),{recursive:true});
   const tmp=target+"."+process.pid+".tmp";
-  fs.writeFileSync(tmp,JSON.stringify(report,null,2)+"
-",{encoding:"utf8",mode:0o600,flag:"wx"});
+  fs.writeFileSync(tmp,JSON.stringify(report,null,2)+"\n",{encoding:"utf8",mode:0o600,flag:"wx"});
   fs.renameSync(tmp,target);
   return target;
 }
