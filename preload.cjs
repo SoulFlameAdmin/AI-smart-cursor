@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("david", {
   getInfo: () =>
     ipcRenderer.invoke("david:get-info"),
 
+  commandCenterStatus: () =>
+    ipcRenderer.invoke("david:command-center-status"),
+
   hideCommandPanel: () =>
     ipcRenderer.send("david:hide-command-panel"),
 
