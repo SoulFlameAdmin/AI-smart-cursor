@@ -28,7 +28,7 @@ function readSafeStatus(file, now = Date.now()) {
     const parsed = timestamp ? Date.parse(timestamp) : NaN;
     const ageMs = Number.isFinite(parsed) ? Math.max(0, now-parsed) : null;
     // Whitelist only diagnostics; NEVER return prompts, URLs, tokens or project data.
-    const stage = [obj.watchdog,obj.status,obj.phase].find(v=>typeof v === "string" && v.length <= 64) || "unknown";
+    const stage = [obj.watchdog,obj.status,obj.phase].find(v=>typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v)) || "unknown";
     return {status:"snapshot",stage,updatedAt:Number.isFinite(parsed)?new Date(parsed).toISOString():null,
       stale:ageMs === null ? null : ageMs > 90000};
   } catch(e) {
