@@ -53,6 +53,9 @@ jobs:
       - name: DAVID baseline tests
         run: node tests/baseline-tests.cjs
 
+      - name: DAVID Manager contract tests
+        run: node tests/david-manager-v1.cjs
+
       - name: Syntax checks
         shell: pwsh
         run: |

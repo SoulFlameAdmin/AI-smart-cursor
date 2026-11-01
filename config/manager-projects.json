@@ -1,0 +1,34 @@
+{
+  "projects": [
+    {
+      "id": "DAVID_CURSOR",
+      "name": "DAVID Smart Cursor",
+      "github_repo": "SoulFlameAdmin/AI-smart-cursor"
+    },
+    {
+      "id": "DAVID_OS",
+      "name": "DAVID OS",
+      "github_repo": "SoulFlameAdmin/david-os"
+    },
+    {
+      "id": "ENCHEV",
+      "name": "Enchev Auctions",
+      "github_repo": "SoulFlameAdmin/enchev-auctions"
+    },
+    {
+      "id": "DPP",
+      "name": "SoulFlame DPP",
+      "github_repo": "SoulFlameAdmin/dpp"
+    },
+    {
+      "id": "DPP_AUTOPILOT",
+      "name": "DPP Autopilot",
+      "github_repo": "SoulFlameAdmin/DPPautopilot"
+    },
+    {
+      "id": "MM",
+      "name": "MM Command Center",
+      "github_repo": null
+    }
+  ]
+}
