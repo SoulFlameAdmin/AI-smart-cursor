@@ -1,0 +1,14 @@
+{
+  "name": "david-command-center-integration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Non-destructive local status and independent ASK adapter for DAVID Smart Cursor",
+  "main": "src/index.cjs",
+  "scripts": {
+    "test": "node tests/smoke.cjs",
+    "status": "node bin/status.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
