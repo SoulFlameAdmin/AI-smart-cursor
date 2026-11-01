@@ -29,14 +29,22 @@ class AskQueue {
         if(!this.responder){this.results.set(job.id,{id:job.id,project:job.project,status:"blocked",reason:"No approved independent ASK responder is configured"});continue;}
         this.results.set(job.id,{id:job.id,project:job.project,status:"running"});
         const abort=new AbortController();
-        const timer=setTimeout(()=>abort.abort(),this.timeoutMs);
+        let timer;
         try{
-          const answer=await this.responder({project:job.project,question:job.question,signal:abort.signal});
+          const answer=await Promise.race([
+            Promise.resolve().then(()=>this.responder({project:job.project,question:job.question,signal:abort.signal})),
+            new Promise((_,reject)=>{
+              timer=setTimeout(()=>{
+                abort.abort();
+                reject(new Error("ASK timed out"));
+              },this.timeoutMs);
+            })
+          ]);
           if(abort.signal.aborted) throw new Error("ASK timed out");
           if(typeof answer!=="string" || !answer.trim()) throw new Error("ASK returned no answer");
           this.results.set(job.id,{id:job.id,project:job.project,status:"completed",answer:answer.slice(0,8000)});
         }catch(e){this.results.set(job.id,{id:job.id,project:job.project,status:"failed",reason:String(e.message||e).slice(0,200)});}
-        finally{clearTimeout(timer);}
+        finally{if(timer)clearTimeout(timer);}
       }
     } finally{this.processing=false;}
   }
