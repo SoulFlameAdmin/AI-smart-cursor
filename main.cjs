@@ -606,6 +606,13 @@ async function bootstrap() {
       };
     }
 
+    // DAVID_COMMAND_CENTER: read-only, no focus, no worker control.
+    if (/^:(center|david-center)$/i.test(text)) {
+      const snapshot = await require("./DAVID_COMAND_CENTER/src/status.cjs").getStatus();
+      const active = Object.entries(snapshot.workers).filter(([, s]) => s.status === "snapshot" && s.stale === false)
+        .map(([role,s]) => role + "=" + s.stage).join(" | ");
+      return { ok: true, message: "DAVID CENTER snapshot (not verified live): " + (active || "no fresh worker states"), data: snapshot };
+    }
     if (
       pendingDavidInput &&
       pendingDavidInput.type === "chatgpt_message"
@@ -642,6 +649,9 @@ async function bootstrap() {
     closeCommandPanel();
   });
 
+  ipcMain.handle("david:command-center-status", async () =>
+    require("./DAVID_COMAND_CENTER/src/status.cjs").getStatus()
+  );
   ipcMain.handle("david:get-info", () => ({
     mode: teacher.isConnected()
       ? "supabase-teacher"
