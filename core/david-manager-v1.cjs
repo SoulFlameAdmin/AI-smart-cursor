@@ -109,7 +109,7 @@ async function proposeWithGemini(projects,{geminiKey="",model="gemini-3.5-flash-
     if (!r.ok) throw Error("Gemini HTTP "+r.status);
     const response=await r.json();
     const answer=(response.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("").trim();
-    const parsed=JSON.parse(answer.replace(/^`(?:json)?s*/i,"").replace(/s*```$/,""));
+    const parsed=JSON.parse(answer.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,""));
     if (!Array.isArray(parsed.tasks)) throw Error("Invalid Gemini manager plan.");
     return {planner:"gemini",proposals:parsed.tasks.slice(0,5).map(p=>normalizeProposal(p,projects)).filter(Boolean),warning:null};
   } catch(e) {
