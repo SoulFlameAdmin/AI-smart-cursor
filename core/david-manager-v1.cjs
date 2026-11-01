@@ -130,8 +130,7 @@ function formatReport(r) {
     if (p.open_prs.length) lines.push("Отворени PR: "+p.open_prs.length);
     if (p.reason) lines.push("Бележка: "+p.reason);
   }
-  lines.push("
-Следващи предложения: "+r.proposed_tasks.length);
+  lines.push("\nСледващи предложения: "+r.proposed_tasks.length);
   for (const p of r.proposed_tasks) lines.push("• "+p.project_id+": "+p.title+" · "+(p.requires_approval?"изисква одобрение":"само проверка"));
   if (r.planner_warning) lines.push("\n"+r.planner_warning);
   lines.push("Нито една предложена задача не е изпълнена или одобрена автоматично.");
