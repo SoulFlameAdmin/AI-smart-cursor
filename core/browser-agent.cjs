@@ -271,6 +271,18 @@ class BrowserAgent {
     });
   }
 
+  verifyUrlExact(value) {
+    const window = this.ensureWindow();
+    const expected = new URL(validateHttpUrl(value));
+    const current = new URL(window.webContents.getURL());
+
+    if (current.href !== expected.href) {
+      throw new Error("Проверката за точен URL се провали.");
+    }
+
+    return true;
+  }
+
   verifyUrlContains(value) {
     const window = this.ensureWindow();
     const current = window.webContents.getURL();
