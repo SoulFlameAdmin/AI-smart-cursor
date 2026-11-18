@@ -116,6 +116,10 @@ class ActionExecutor {
         await this.browser.pressKey(step.key);
         return;
 
+      case "verify_url_exact":
+        this.browser.verifyUrlExact(step.value);
+        return;
+
       case "verify_url_contains":
         this.browser.verifyUrlContains(step.value);
         return;
