@@ -87,12 +87,39 @@ function createChatGptTeacherSkill() {
   };
 }
 
+
+const VERCEL_HOME_URL = "https://vercel.com/";
+
+function createVercelOpenSkill() {
+  return {
+    skill_key: "builtin_open_vercel",
+    title: "Отвори Vercel",
+    description: "Отваря само https://vercel.com/ в DAVID Browser и проверява точния адрес.",
+    version: 1,
+    status: "approved",
+    source: "builtin",
+    risk_level: "low",
+    matcher: {
+      type: "regex",
+      pattern: String.raw`^(?:отвори|otvori|open)\s+(?:сайта\s+)?(?:vercel(?:\.com)?|верцел|версел)\s*[.!?]?$ `.trim(),
+      flags: "iu",
+      variables: []
+    },
+    steps: [
+      { action: "browser_open", url: VERCEL_HOME_URL },
+      { action: "verify_url_exact", value: VERCEL_HOME_URL }
+    ]
+  };
+}
+
 function getBuiltInSkills() {
-  return [createChatGptTeacherSkill()];
+  return [createVercelOpenSkill(), createChatGptTeacherSkill()];
 }
 
 module.exports = {
   DAVID_TEACHER_CHAT_URL,
   createChatGptTeacherSkill,
+  createVercelOpenSkill,
+  VERCEL_HOME_URL,
   getBuiltInSkills
 };

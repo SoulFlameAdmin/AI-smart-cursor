@@ -10,6 +10,7 @@ const ALLOWED_ACTIONS = new Set([
   "browser_click_text",
   "browser_type_selector",
   "browser_press_key",
+  "verify_url_exact",
   "verify_url_contains",
   "system_click",
   "system_type",
